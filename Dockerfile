@@ -13,6 +13,9 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# Generate Prisma Client
+RUN npx prisma generate
+
 # Build the application
 RUN npm run build
 
@@ -25,5 +28,5 @@ RUN mkdir -p logs
 # Expose port
 EXPOSE 4022
 
-# Start the application
-CMD ["npm", "run", "start:prod"]
+# Start the application (run migrations first, then start the app)
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run start:prod"]
