@@ -2,7 +2,6 @@ import { PinoLoggerService } from "@modules/common/logger/pinoLogger.service";
 import { PrismaService } from "@modules/common/prisma/prisma.service";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { CREDITS_PLAN, Prisma, User } from "@prisma/client";
-import { agent } from "supertest";
 
 @Injectable()
 export class OrganisationService {
