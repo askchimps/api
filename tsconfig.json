@@ -15,12 +15,15 @@
     "outDir": "./dist",
     "baseUrl": "src",
     "paths": {
-			"@modules/*": ["./modules/*"],
+      "@app/*": ["./app/*"],
+      "@decorators/*": ["./decorators/*"],
 			"@filters/*": ["./filters/*"],
-			"@helpers/*": ["./helpers/*"],
 			"@guards/*": ["./guards/*"],
+			"@helpers/*": ["./helpers/*"],
 			"@interceptors/*": ["./interceptors/*"],
-			"@pipes/*": ["./pipes/*"]
+			"@modules/*": ["./modules/*"],
+			"@strategies/*": ["./strategies/*"],
+			"@types/*": ["./types/*"],
 		},
     "incremental": true,
     "skipLibCheck": true,
