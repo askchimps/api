@@ -1,7 +1,7 @@
 import { PinoLoggerService } from "@modules/common/logger/pinoLogger.service";
 import { PrismaService } from "@modules/common/prisma/prisma.service";
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { CREDITS_PLAN, Prisma, User } from "@prisma/client";
+import { Prisma, User } from "@prisma/client";
 
 @Injectable()
 export class OrganisationService {
@@ -133,6 +133,7 @@ export class OrganisationService {
             throw new NotFoundException('Organisation not found');
         }
 
+        // Use raw SQL queries for better performance and to avoid SIGSEGV with large datasets
         const [conversationCount, messageCount, dailyConversations, dailyMessages, agentConversations, agentMessages] = await Promise.all([
             // Total conversation count
             this.prisma.conversation.count({
@@ -155,105 +156,93 @@ export class OrganisationService {
                     role: "assistant",
                 },
             }),
-            // Daily conversation breakdown using Prisma groupBy
-            this.prisma.conversation.groupBy({
-                by: ['created_at'],
-                where: {
-                    organisation_id: organisation.id,
-                    created_at: {
-                        gte: defaultStartDate,
-                        lte: defaultEndDate,
-                    },
-                },
-                _count: {
-                    id: true,
-                },
-                orderBy: {
-                    created_at: 'asc',
-                },
-            }),
-            // Daily message breakdown using Prisma groupBy
-            this.prisma.message.groupBy({
-                by: ['created_at'],
-                where: {
-                    organisation_id: organisation.id,
-                    created_at: {
-                        gte: defaultStartDate,
-                        lte: defaultEndDate,
-                    },
-                    role: "assistant",
-                },
-                _count: {
-                    id: true,
-                },
-                orderBy: {
-                    created_at: 'asc',
-                },
-            }),
-            // Agent conversation breakdown using Prisma groupBy
-            this.prisma.conversation.groupBy({
-                by: ['agent_id'],
-                where: {
-                    organisation_id: organisation.id,
-                    created_at: {
-                        gte: defaultStartDate,
-                        lte: defaultEndDate,
-                    },
-                },
-                _count: {
-                    id: true,
-                }
-            }),
-            // Agent message breakdown using Prisma groupBy
-            this.prisma.message.groupBy({
-                by: ['agent_id'],
-                where: {
-                    organisation_id: organisation.id,
-                    created_at: {
-                        gte: defaultStartDate,
-                        lte: defaultEndDate,
-                    },
-                    role: "assistant",
-                },
-                _count: {
-                    id: true,
-                }
-            }),
+            // Daily conversation breakdown - group by date only, not timestamp
+            this.prisma.$queryRaw<Array<{date: Date, count: bigint}>>`
+                SELECT 
+                    DATE(created_at) as date,
+                    COUNT(*) as count
+                FROM "Conversation"
+                WHERE organisation_id = ${organisation.id}
+                    AND created_at >= ${defaultStartDate}
+                    AND created_at <= ${defaultEndDate}
+                GROUP BY DATE(created_at)
+                ORDER BY date ASC
+            `,
+            // Daily message breakdown - group by date only, not timestamp
+            this.prisma.$queryRaw<Array<{date: Date, count: bigint}>>`
+                SELECT 
+                    DATE(created_at) as date,
+                    COUNT(*) as count
+                FROM "Message"
+                WHERE organisation_id = ${organisation.id}
+                    AND created_at >= ${defaultStartDate}
+                    AND created_at <= ${defaultEndDate}
+                    AND role = 'assistant'
+                GROUP BY DATE(created_at)
+                ORDER BY date ASC
+            `,
+            // Agent conversation breakdown
+            this.prisma.$queryRaw<Array<{agent_id: number, count: bigint}>>`
+                SELECT 
+                    agent_id,
+                    COUNT(*) as count
+                FROM "Conversation"
+                WHERE organisation_id = ${organisation.id}
+                    AND created_at >= ${defaultStartDate}
+                    AND created_at <= ${defaultEndDate}
+                GROUP BY agent_id
+            `,
+            // Agent message breakdown
+            this.prisma.$queryRaw<Array<{agent_id: number, count: bigint}>>`
+                SELECT 
+                    agent_id,
+                    COUNT(*) as count
+                FROM "Message"
+                WHERE organisation_id = ${organisation.id}
+                    AND created_at >= ${defaultStartDate}
+                    AND created_at <= ${defaultEndDate}
+                    AND role = 'assistant'
+                GROUP BY agent_id
+            `,
         ]);
 
+        // Process daily usage more efficiently
         const dailyUsageMap = new Map<string, { usedConversationCredits: number, usedMessageCredits: number }>();
 
         dailyConversations.forEach(item => {
-            const date = item.created_at.toISOString().split('T')[0];
-            const currentData = dailyUsageMap.get(date) || { usedConversationCredits: 0, usedMessageCredits: 0 };
-            dailyUsageMap.set(date, {
-                usedConversationCredits: currentData.usedConversationCredits + item._count.id,
+            const dateStr = item.date.toISOString().split('T')[0];
+            const currentData = dailyUsageMap.get(dateStr) || { usedConversationCredits: 0, usedMessageCredits: 0 };
+            dailyUsageMap.set(dateStr, {
+                usedConversationCredits: currentData.usedConversationCredits + Number(item.count),
                 usedMessageCredits: currentData.usedMessageCredits,
             });
         });
 
         dailyMessages.forEach(item => {
-            const date = item.created_at.toISOString().split('T')[0];
-            const currentData = dailyUsageMap.get(date) || { usedConversationCredits: 0, usedMessageCredits: 0 };
-            dailyUsageMap.set(date, {
+            const dateStr = item.date.toISOString().split('T')[0];
+            const currentData = dailyUsageMap.get(dateStr) || { usedConversationCredits: 0, usedMessageCredits: 0 };
+            dailyUsageMap.set(dateStr, {
                 usedConversationCredits: currentData.usedConversationCredits,
-                usedMessageCredits: currentData.usedMessageCredits + item._count.id,
+                usedMessageCredits: currentData.usedMessageCredits + Number(item.count),
             });
         });
 
-        const dailyUsage = Array.from(dailyUsageMap.entries()).map(([date, { usedConversationCredits, usedMessageCredits }]) => ({
-            date,
-            usedConversationCredits,
-            usedMessageCredits,
-        }));
+        const dailyUsage = Array.from(dailyUsageMap.entries())
+            .map(([date, { usedConversationCredits, usedMessageCredits }]) => ({
+                date,
+                usedConversationCredits,
+                usedMessageCredits,
+            }))
+            .sort((a, b) => a.date.localeCompare(b.date));
 
+        // Process agent usage more efficiently
         const agentUsageMap = new Map<number, { usedConversationCredits: number, usedMessageCredits: number }>();
 
         agentConversations.forEach(item => {
             const agent_id = item.agent_id;
             const currentData = agentUsageMap.get(agent_id) || { usedConversationCredits: 0, usedMessageCredits: 0 };
             agentUsageMap.set(agent_id, {
-                usedConversationCredits: currentData.usedConversationCredits + item._count.id,
+                usedConversationCredits: currentData.usedConversationCredits + Number(item.count),
                 usedMessageCredits: currentData.usedMessageCredits,
             });
         });
@@ -263,16 +252,18 @@ export class OrganisationService {
             const currentData = agentUsageMap.get(agent_id) || { usedConversationCredits: 0, usedMessageCredits: 0 };
             agentUsageMap.set(agent_id, {
                 usedConversationCredits: currentData.usedConversationCredits,
-                usedMessageCredits: currentData.usedMessageCredits + item._count.id,
+                usedMessageCredits: currentData.usedMessageCredits + Number(item.count),
             });
         });
 
-        const agentUsage = Array.from(agentUsageMap.entries()).map(([agent_id, { usedConversationCredits, usedMessageCredits }]) => ({
-            agent_id,
-            agent_name: organisation.agents.find(a => a.id === agent_id)?.name || 'Unknown',
-            usedConversationCredits,
-            usedMessageCredits,
-        }));
+        const agentUsage = Array.from(agentUsageMap.entries())
+            .map(([agent_id, { usedConversationCredits, usedMessageCredits }]) => ({
+                agent_id,
+                agent_name: organisation.agents.find(a => a.id === agent_id)?.name || 'Unknown',
+                usedConversationCredits,
+                usedMessageCredits,
+            }))
+            .filter(item => item.usedConversationCredits > 0 || item.usedMessageCredits > 0);
 
         const result = {
             creditsPlan: organisation.credits_plan,

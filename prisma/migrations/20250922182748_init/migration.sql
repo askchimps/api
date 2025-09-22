@@ -149,6 +149,18 @@ CREATE UNIQUE INDEX "Conversation_name_key" ON "public"."Conversation"("name");
 -- CreateIndex
 CREATE UNIQUE INDEX "Conversation_lead_id_key" ON "public"."Conversation"("lead_id");
 
+-- CreateIndex
+CREATE INDEX "Conversation_organisation_id_created_at_idx" ON "public"."Conversation"("organisation_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "Conversation_organisation_id_agent_id_created_at_idx" ON "public"."Conversation"("organisation_id", "agent_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "Message_organisation_id_created_at_role_idx" ON "public"."Message"("organisation_id", "created_at", "role");
+
+-- CreateIndex
+CREATE INDEX "Message_organisation_id_agent_id_created_at_role_idx" ON "public"."Message"("organisation_id", "agent_id", "created_at", "role");
+
 -- AddForeignKey
 ALTER TABLE "public"."UserOrganisation" ADD CONSTRAINT "UserOrganisation_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

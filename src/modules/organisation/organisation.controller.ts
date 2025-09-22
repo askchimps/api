@@ -33,15 +33,6 @@ export class OrganisationController {
     }
 
     @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
-    @Get(':org_id_or_slug/agents')
-    async getAllAgents(
-        @Req() req: AuthRequest,
-        @Param('org_id_or_slug') org_id_or_slug: string,
-    ) {
-        return this.organisationService.getAllAgents(req.user, org_id_or_slug);
-    }
-
-    @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
     @Get(':org_id_or_slug/usage')
     async getUsage(
         @Req() req: AuthRequest,
@@ -58,5 +49,14 @@ export class OrganisationController {
             parsedStartDate,
             parsedEndDate,
         );
+    }
+
+    @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
+    @Get(':org_id_or_slug/agents')
+    async getAllAgents(
+        @Req() req: AuthRequest,
+        @Param('org_id_or_slug') org_id_or_slug: string,
+    ) {
+        return this.organisationService.getAllAgents(req.user, org_id_or_slug);
     }
 }

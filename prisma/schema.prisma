@@ -128,6 +128,9 @@ model Conversation {
   agent        Agent        @relation(fields: [agent_id], references: [id], onDelete: Cascade)
   messages     Message[]
   lead         Lead?        @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  @@index([organisation_id, created_at])
+  @@index([organisation_id, agent_id, created_at])
 }
 
 model Message {
@@ -147,4 +150,7 @@ model Message {
   agent        Agent        @relation(fields: [agent_id], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
   organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
+
+  @@index([organisation_id, created_at, role])
+  @@index([organisation_id, agent_id, created_at, role])
 }
