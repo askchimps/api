@@ -90,205 +90,174 @@ export class OrganisationService {
     async getUsage(user: User, idOrSlug: string, startDate?: Date, endDate?: Date) {
         const methodName = 'getUsage';
 
-        const now = new Date();
-        const defaultStartDate = startDate || new Date(now.getFullYear(), now.getMonth(), 1);
-        const defaultEndDate = endDate || new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        try {
+            const now = new Date();
+            const defaultStartDate = startDate || new Date(now.getFullYear(), now.getMonth(), 1);
+            const defaultEndDate = endDate || new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-        this.logger.log(
-            JSON.stringify({
-                title: `${methodName} - start`,
-                data: { user, idOrSlug, startDate: defaultStartDate, endDate: defaultEndDate },
-            }),
-            methodName,
-        );
+            this.logger.log(
+                JSON.stringify({
+                    title: `${methodName} - start`,
+                    data: { user, idOrSlug, startDate: defaultStartDate, endDate: defaultEndDate },
+                }),
+                methodName,
+            );
 
-        const id = Number(idOrSlug);
-        const slug = idOrSlug;
+            const id = Number(idOrSlug);
+            const slug = idOrSlug;
 
-        const whereCondition: Prisma.OrganisationWhereInput = {
-            OR: [
-                { id: isNaN(id) ? undefined : id },
-                { slug: slug },
-            ],
-        };
+            const whereCondition: Prisma.OrganisationWhereInput = {
+                OR: [
+                    { id: isNaN(id) ? undefined : id },
+                    { slug: slug },
+                ],
+            };
 
-        if (!user.is_super_admin) {
-            whereCondition.is_deleted = 0;
-            whereCondition.is_disabled = 0;
-        }
+            if (!user.is_super_admin) {
+                whereCondition.is_deleted = 0;
+                whereCondition.is_disabled = 0;
+            }
 
-        const organisation = await this.prisma.organisation.findFirst({
-            where: whereCondition,
-            include: {
-                agents: {
-                    select: {
-                        id: true,
-                        name: true,
+            const organisation = await this.prisma.organisation.findFirst({
+                where: whereCondition,
+                include: {
+                    agents: {
+                        select: {
+                            id: true,
+                            name: true,
+                        }
                     }
                 }
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
             }
-        });
 
-        if (!organisation) {
-            throw new NotFoundException('Organisation not found');
+            const [
+                conversationCount,
+                messageCount,
+                dailyStats,
+                agentStats
+            ] = await Promise.all([
+                this.prisma.conversation.count({
+                    where: {
+                        organisation_id: organisation.id,
+                        created_at: {
+                            gte: defaultStartDate,
+                            lte: defaultEndDate,
+                        },
+                    },
+                }),
+                this.prisma.message.count({
+                    where: {
+                        organisation_id: organisation.id,
+                        created_at: {
+                            gte: defaultStartDate,
+                            lte: defaultEndDate,
+                        },
+                        role: "assistant",
+                    },
+                }),
+                this.prisma.$queryRaw<Array<{
+                    date: Date,
+                    conversation_count: bigint,
+                    message_count: bigint
+                }>>`
+                SELECT 
+                    DATE_TRUNC('day', c.created_at) as date,
+                    COUNT(DISTINCT c.id) as conversation_count,
+                    COUNT(m.id) as message_count
+                FROM "Conversation" c
+                LEFT JOIN "Message" m ON 
+                    m.conversation_id = c.id 
+                    AND m.created_at >= ${defaultStartDate}
+                    AND m.created_at <= ${defaultEndDate}
+                    AND m.role = 'assistant'
+                WHERE 
+                    c.organisation_id = ${organisation.id}
+                    AND c.created_at >= ${defaultStartDate}
+                    AND c.created_at <= ${defaultEndDate}
+                GROUP BY DATE_TRUNC('day', c.created_at)
+                ORDER BY date ASC
+            `,
+                this.prisma.$queryRaw<Array<{
+                    agent_id: number,
+                    agent_name: string,
+                    conversation_count: bigint,
+                    message_count: bigint
+                }>>`
+                SELECT 
+                    a.id as agent_id,
+                    a.name as agent_name,
+                    COUNT(DISTINCT c.id) as conversation_count,
+                    COUNT(m.id) as message_count
+                FROM "Agent" a
+                LEFT JOIN "Conversation" c ON 
+                    c.agent_id = a.id 
+                    AND c.organisation_id = ${organisation.id}
+                    AND c.created_at >= ${defaultStartDate}
+                    AND c.created_at <= ${defaultEndDate}
+                LEFT JOIN "Message" m ON 
+                    m.conversation_id = c.id 
+                    AND m.created_at >= ${defaultStartDate}
+                    AND m.created_at <= ${defaultEndDate}
+                    AND m.role = 'assistant'
+                WHERE a.organisation_id = ${organisation.id}
+                GROUP BY a.id, a.name
+                HAVING COUNT(DISTINCT c.id) > 0 OR COUNT(m.id) > 0
+                ORDER BY a.id ASC
+            `
+            ]);
+
+            const dailyUsage = dailyStats.map(day => ({
+                date: day.date.toISOString().split('T')[0],
+                usedConversationCredits: Number(day.conversation_count),
+                usedMessageCredits: Number(day.message_count)
+            }));
+
+            const agentUsage = agentStats.map(agent => ({
+                agent_id: agent.agent_id,
+                agent_name: agent.agent_name,
+                usedConversationCredits: Number(agent.conversation_count),
+                usedMessageCredits: Number(agent.message_count)
+            }));
+
+            const result = {
+                creditsPlan: organisation.credits_plan,
+                remainingConversationCredits: organisation.conversation_credits,
+                remainingMessageCredits: organisation.message_credits,
+                remainingCallCredits: organisation.call_credits,
+                dateRange: {
+                    startDate: defaultStartDate,
+                    endDate: defaultEndDate,
+                },
+                usedConversationCredits: conversationCount,
+                usedMessageCredits: messageCount,
+                dailyUsage,
+                agentUsage
+            };
+
+            this.logger.log(
+                JSON.stringify({
+                    title: `${methodName} - end`,
+                    data: { organisationId: organisation.id, resultSize: JSON.stringify(result).length },
+                }),
+                methodName,
+            );
+
+            return result;
+        } catch (error) {
+            this.logger.error(
+                JSON.stringify({
+                    title: `${methodName} - error`,
+                    error: error?.message || 'Unknown error',
+                    stack: error?.stack,
+                }),
+                methodName,
+            );
+            throw error;
         }
-
-        // Use raw SQL queries for better performance and to avoid SIGSEGV with large datasets
-        const [conversationCount, messageCount, dailyConversations, dailyMessages, agentConversations, agentMessages] = await Promise.all([
-            // Total conversation count
-            this.prisma.conversation.count({
-                where: {
-                    organisation_id: organisation.id,
-                    created_at: {
-                        gte: defaultStartDate,
-                        lte: defaultEndDate,
-                    },
-                },
-            }),
-            // Total message count
-            this.prisma.message.count({
-                where: {
-                    organisation_id: organisation.id,
-                    created_at: {
-                        gte: defaultStartDate,
-                        lte: defaultEndDate,
-                    },
-                    role: "assistant",
-                },
-            }),
-            // Daily conversation breakdown - group by date only, not timestamp
-            this.prisma.$queryRaw<Array<{date: Date, count: bigint}>>`
-                SELECT 
-                    DATE(created_at) as date,
-                    COUNT(*) as count
-                FROM "Conversation"
-                WHERE organisation_id = ${organisation.id}
-                    AND created_at >= ${defaultStartDate}
-                    AND created_at <= ${defaultEndDate}
-                GROUP BY DATE(created_at)
-                ORDER BY date ASC
-            `,
-            // Daily message breakdown - group by date only, not timestamp
-            this.prisma.$queryRaw<Array<{date: Date, count: bigint}>>`
-                SELECT 
-                    DATE(created_at) as date,
-                    COUNT(*) as count
-                FROM "Message"
-                WHERE organisation_id = ${organisation.id}
-                    AND created_at >= ${defaultStartDate}
-                    AND created_at <= ${defaultEndDate}
-                    AND role = 'assistant'
-                GROUP BY DATE(created_at)
-                ORDER BY date ASC
-            `,
-            // Agent conversation breakdown
-            this.prisma.$queryRaw<Array<{agent_id: number, count: bigint}>>`
-                SELECT 
-                    agent_id,
-                    COUNT(*) as count
-                FROM "Conversation"
-                WHERE organisation_id = ${organisation.id}
-                    AND created_at >= ${defaultStartDate}
-                    AND created_at <= ${defaultEndDate}
-                GROUP BY agent_id
-            `,
-            // Agent message breakdown
-            this.prisma.$queryRaw<Array<{agent_id: number, count: bigint}>>`
-                SELECT 
-                    agent_id,
-                    COUNT(*) as count
-                FROM "Message"
-                WHERE organisation_id = ${organisation.id}
-                    AND created_at >= ${defaultStartDate}
-                    AND created_at <= ${defaultEndDate}
-                    AND role = 'assistant'
-                GROUP BY agent_id
-            `,
-        ]);
-
-        // Process daily usage more efficiently
-        const dailyUsageMap = new Map<string, { usedConversationCredits: number, usedMessageCredits: number }>();
-
-        dailyConversations.forEach(item => {
-            const dateStr = item.date.toISOString().split('T')[0];
-            const currentData = dailyUsageMap.get(dateStr) || { usedConversationCredits: 0, usedMessageCredits: 0 };
-            dailyUsageMap.set(dateStr, {
-                usedConversationCredits: currentData.usedConversationCredits + Number(item.count),
-                usedMessageCredits: currentData.usedMessageCredits,
-            });
-        });
-
-        dailyMessages.forEach(item => {
-            const dateStr = item.date.toISOString().split('T')[0];
-            const currentData = dailyUsageMap.get(dateStr) || { usedConversationCredits: 0, usedMessageCredits: 0 };
-            dailyUsageMap.set(dateStr, {
-                usedConversationCredits: currentData.usedConversationCredits,
-                usedMessageCredits: currentData.usedMessageCredits + Number(item.count),
-            });
-        });
-
-        const dailyUsage = Array.from(dailyUsageMap.entries())
-            .map(([date, { usedConversationCredits, usedMessageCredits }]) => ({
-                date,
-                usedConversationCredits,
-                usedMessageCredits,
-            }))
-            .sort((a, b) => a.date.localeCompare(b.date));
-
-        // Process agent usage more efficiently
-        const agentUsageMap = new Map<number, { usedConversationCredits: number, usedMessageCredits: number }>();
-
-        agentConversations.forEach(item => {
-            const agent_id = item.agent_id;
-            const currentData = agentUsageMap.get(agent_id) || { usedConversationCredits: 0, usedMessageCredits: 0 };
-            agentUsageMap.set(agent_id, {
-                usedConversationCredits: currentData.usedConversationCredits + Number(item.count),
-                usedMessageCredits: currentData.usedMessageCredits,
-            });
-        });
-
-        agentMessages.forEach(item => {
-            const agent_id = item.agent_id;
-            const currentData = agentUsageMap.get(agent_id) || { usedConversationCredits: 0, usedMessageCredits: 0 };
-            agentUsageMap.set(agent_id, {
-                usedConversationCredits: currentData.usedConversationCredits,
-                usedMessageCredits: currentData.usedMessageCredits + Number(item.count),
-            });
-        });
-
-        const agentUsage = Array.from(agentUsageMap.entries())
-            .map(([agent_id, { usedConversationCredits, usedMessageCredits }]) => ({
-                agent_id,
-                agent_name: organisation.agents.find(a => a.id === agent_id)?.name || 'Unknown',
-                usedConversationCredits,
-                usedMessageCredits,
-            }))
-            .filter(item => item.usedConversationCredits > 0 || item.usedMessageCredits > 0);
-
-        const result = {
-            creditsPlan: organisation.credits_plan,
-            remainingConversationCredits: organisation.conversation_credits,
-            remainingMessageCredits: organisation.message_credits,
-            remainingCallCredits: organisation.call_credits,
-            dateRange: {
-                startDate: defaultStartDate,
-                endDate: defaultEndDate,
-            },
-            usedConversationCredits: conversationCount,
-            usedMessageCredits: messageCount,
-            dailyUsage,
-            agentUsage
-        };
-
-        this.logger.log(
-            JSON.stringify({
-                title: `${methodName} - end`,
-                data: { organisationId: organisation.id, resultSize: JSON.stringify(result).length },
-            }),
-            methodName,
-        );
-
-        return result;
     }
 
     async getAllAgents(user: User, idOrSlug: string) {
