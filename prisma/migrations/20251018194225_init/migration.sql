@@ -81,6 +81,7 @@ CREATE TABLE "public"."Lead" (
     "phone_number" TEXT,
     "source" TEXT,
     "status" TEXT,
+    "is_indian" INTEGER NOT NULL DEFAULT 0,
     "additional_info" JSONB,
     "logs" JSONB,
     "follow_ups" INTEGER NOT NULL DEFAULT 0,

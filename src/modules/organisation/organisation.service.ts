@@ -1,6 +1,7 @@
 import { PinoLoggerService } from "@modules/common/logger/pinoLogger.service";
 import { PrismaService } from "@modules/common/prisma/prisma.service";
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
+import { ApiResponse } from '@helpers/api-response.helper';
 import { CONVERSATION_TYPE, Prisma, User } from "@prisma/client";
 import { ProcessedConversationFilters } from './dto/get-conversations.dto';
 import { ProcessedLeadFilters } from './dto/get-leads.dto';
@@ -1186,5 +1187,267 @@ export class OrganisationService {
 
     //     return agents;
     // }
+
+    async getAvailableChannels(org_id_or_slug: string): Promise<ApiResponse<{
+        indian_channels: number;
+        international_channels: number;
+        total_channels: number;
+    }>> {
+        const methodName = 'getAvailableChannels';
+        this.logger.log(
+            JSON.stringify({
+                title: `${methodName} - start`,
+                data: { org_id_or_slug },
+            }),
+            methodName,
+        );
+
+        try {
+            // Check if the parameter is a number (ID) or string (slug)
+            const isId = !isNaN(Number(org_id_or_slug));
+            const whereCondition = isId 
+                ? { id: Number(org_id_or_slug) }
+                : { slug: org_id_or_slug };
+
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    ...whereCondition,
+                    is_deleted: 0,
+                    is_disabled: 0,
+                }
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
+            }
+
+            const availableIndianChannels = Math.max(0, organisation.available_indian_channels - organisation.active_indian_calls);
+            const availableInternationalChannels = Math.max(0, organisation.available_international_channels - organisation.active_international_calls);
+            const totalAvailableChannels = availableIndianChannels + availableInternationalChannels;
+
+            const result = {
+                indian_channels: availableIndianChannels,
+                international_channels: availableInternationalChannels,
+                total_channels: totalAvailableChannels,
+            };
+
+            this.logger.log(
+                JSON.stringify({
+                    title: `${methodName} - success`,
+                    data: result,
+                }),
+                methodName,
+            );
+
+            return ApiResponse.success('Available channels retrieved successfully', result);
+        } catch (error) {
+            this.logger.error(
+                JSON.stringify({
+                    title: `${methodName} - error`,
+                    error: error.message,
+                }),
+                methodName,
+            );
+            
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new BadRequestException('Failed to get available channels');
+        }
+    }
+
+    async incrementActiveCalls(org_id_or_slug: string, call_type: 'indian' | 'international'): Promise<ApiResponse<{
+        active_indian_calls: number;
+        active_international_calls: number;
+        available_channels: {
+            indian_channels: number;
+            international_channels: number;
+            total_channels: number;
+        };
+    }>> {
+        const methodName = 'incrementActiveCalls';
+        this.logger.log(
+            JSON.stringify({
+                title: `${methodName} - start`,
+                data: { org_id_or_slug },
+            }),
+            methodName,
+        );
+
+        try {
+            // Check if the parameter is a number (ID) or string (slug)
+            const isId = !isNaN(Number(org_id_or_slug));
+            const whereCondition = isId 
+                ? { id: Number(org_id_or_slug) }
+                : { slug: org_id_or_slug };
+
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    ...whereCondition,
+                    is_deleted: 0,
+                    is_disabled: 0,
+                }
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
+            }
+
+            // Check availability for the specific call type
+            const availableChannels = call_type === 'indian' 
+                ? organisation.available_indian_channels 
+                : organisation.available_international_channels;
+            
+            const activeCallsForType = call_type === 'indian' 
+                ? organisation.active_indian_calls || 0
+                : organisation.active_international_calls || 0;
+            
+            if (activeCallsForType >= availableChannels) {
+                throw new BadRequestException(`No available ${call_type} channels to increment active calls`);
+            }
+
+            // Update the appropriate field
+            const updateField = call_type === 'indian' ? 'active_indian_calls' : 'active_international_calls';
+            const updatedOrganisation = await this.prisma.organisation.update({
+                where: whereCondition,
+                data: {
+                    [updateField]: activeCallsForType + 1,
+                }
+            });
+
+            // Calculate available channels for response
+            const availableIndianChannels = Math.max(0, updatedOrganisation.available_indian_channels - (updatedOrganisation.active_indian_calls || 0));
+            const availableInternationalChannels = Math.max(0, updatedOrganisation.available_international_channels - (updatedOrganisation.active_international_calls || 0));
+            const totalRemainingChannels = availableIndianChannels + availableInternationalChannels;
+
+            const result = {
+                active_indian_calls: updatedOrganisation.active_indian_calls || 0,
+                active_international_calls: updatedOrganisation.active_international_calls || 0,
+                available_channels: {
+                    indian_channels: availableIndianChannels,
+                    international_channels: availableInternationalChannels,
+                    total_channels: totalRemainingChannels,
+                },
+            };
+
+            this.logger.log(
+                JSON.stringify({
+                    title: `${methodName} - success`,
+                    data: result,
+                }),
+                methodName,
+            );
+
+            return ApiResponse.success('Active calls incremented successfully', result);
+        } catch (error) {
+            this.logger.error(
+                JSON.stringify({
+                    title: `${methodName} - error`,
+                    error: error.message,
+                }),
+                methodName,
+            );
+            
+            if (error instanceof NotFoundException || error instanceof BadRequestException) {
+                throw error;
+            }
+            throw new BadRequestException('Failed to increment active calls');
+        }
+    }
+
+    async decrementActiveCalls(org_id_or_slug: string, call_type: 'indian' | 'international'): Promise<ApiResponse<{
+        active_indian_calls: number;
+        active_international_calls: number;
+        available_channels: {
+            indian_channels: number;
+            international_channels: number;
+            total_channels: number;
+        };
+    }>> {
+        const methodName = 'decrementActiveCalls';
+        this.logger.log(
+            JSON.stringify({
+                title: `${methodName} - start`,
+                data: { org_id_or_slug },
+            }),
+            methodName,
+        );
+
+        try {
+            // Check if the parameter is a number (ID) or string (slug)
+            const isId = !isNaN(Number(org_id_or_slug));
+            const whereCondition = isId 
+                ? { id: Number(org_id_or_slug) }
+                : { slug: org_id_or_slug };
+
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    ...whereCondition,
+                    is_deleted: 0,
+                    is_disabled: 0,
+                }
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
+            }
+
+            // Check active calls for the specific call type
+            const activeCallsForType = call_type === 'indian' 
+                ? organisation.active_indian_calls || 0
+                : organisation.active_international_calls || 0;
+
+            if (activeCallsForType <= 0) {
+                throw new BadRequestException(`No active ${call_type} calls to decrement`);
+            }
+
+            // Update the appropriate field
+            const updateField = call_type === 'indian' ? 'active_indian_calls' : 'active_international_calls';
+            const updatedOrganisation = await this.prisma.organisation.update({
+                where: whereCondition,
+                data: {
+                    [updateField]: activeCallsForType - 1,
+                }
+            });
+
+            // Calculate available channels for response
+            const availableIndianChannels = Math.max(0, updatedOrganisation.available_indian_channels - (updatedOrganisation.active_indian_calls || 0));
+            const availableInternationalChannels = Math.max(0, updatedOrganisation.available_international_channels - (updatedOrganisation.active_international_calls || 0));
+            const totalRemainingChannels = availableIndianChannels + availableInternationalChannels;
+
+            const result = {
+                active_indian_calls: updatedOrganisation.active_indian_calls || 0,
+                active_international_calls: updatedOrganisation.active_international_calls || 0,
+                available_channels: {
+                    indian_channels: availableIndianChannels,
+                    international_channels: availableInternationalChannels,
+                    total_channels: totalRemainingChannels,
+                },
+            };
+
+            this.logger.log(
+                JSON.stringify({
+                    title: `${methodName} - success`,
+                    data: result,
+                }),
+                methodName,
+            );
+
+            return ApiResponse.success('Active calls decremented successfully', result);
+        } catch (error) {
+            this.logger.error(
+                JSON.stringify({
+                    title: `${methodName} - error`,
+                    error: error.message,
+                }),
+                methodName,
+            );
+            
+            if (error instanceof NotFoundException || error instanceof BadRequestException) {
+                throw error;
+            }
+            throw new BadRequestException('Failed to decrement active calls');
+        }
+    }
 
 }

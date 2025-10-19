@@ -10,6 +10,7 @@ import { PrismaModule } from '@modules/common/prisma/prisma.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { UserModule } from '@modules/user/user.module';
 import { OrganisationModule } from '@modules/organisation/organisation.module';
+import { LeadModule } from '@modules/lead/lead.module';
 // import { AgentModule } from '@modules/agent/agent.module';
 // import { ConversationModule } from '@modules/conversation/conversation.module';
 
@@ -24,6 +25,7 @@ const appModules: NestModuleImport[] = [
   AuthModule,
   UserModule,
   OrganisationModule,
+  LeadModule,
   // AgentModule,
   // ConversationModule
 ];

@@ -365,6 +365,42 @@ async function seed() {
         return date.toISOString().split('T')[0];
     }
 
+    // Generate dates spread across current and last month equally
+    function generateDistributedDate(): string {
+        const currentDate = new Date(2025, 9, 19); // October 19, 2025
+        const isCurrentMonth = Math.random() < 0.5; // 50% chance for current month, 50% for last month
+        
+        if (isCurrentMonth) {
+            // October 2025 - days 1-19
+            const day = Math.floor(Math.random() * 19) + 1;
+            const date = new Date(2025, 9, day); // Month is 0-indexed (9 = October)
+            return date.toISOString().split('T')[0];
+        } else {
+            // September 2025 - days 1-30
+            const day = Math.floor(Math.random() * 30) + 1;
+            const date = new Date(2025, 8, day); // Month is 0-indexed (8 = September)
+            return date.toISOString().split('T')[0];
+        }
+    }
+
+    // Generate distributed date with specific range for interactions
+    function generateDistributedInteractionDate(): string {
+        const currentDate = new Date(2025, 9, 19);
+        const isCurrentMonth = Math.random() < 0.5;
+        
+        if (isCurrentMonth) {
+            // October 2025 - days 1-19
+            const day = Math.floor(Math.random() * 19) + 1;
+            const date = new Date(2025, 9, day);
+            return date.toISOString().split('T')[0];
+        } else {
+            // September 2025 - days 1-30  
+            const day = Math.floor(Math.random() * 30) + 1;
+            const date = new Date(2025, 8, day);
+            return date.toISOString().split('T')[0];
+        }
+    }
+
     // Create leads for each organization
     const leads: any[] = [];
 
@@ -386,11 +422,15 @@ async function seed() {
         
         for (let j = 0; j < numInteractions; j++) {
             interactions.push({
-                date: generateRecentDate(20),
+                date: generateDistributedInteractionDate(),
                 type: interactionTypes[Math.floor(Math.random() * interactionTypes.length)],
                 note: `${interactionTypes[j % interactionTypes.length].replace('_', ' ')} - discussed ${pain_point} solutions`
             });
         }
+
+        // Get distributed creation date
+        const createdAt = new Date(generateDistributedDate());
+        const updatedAt = new Date(createdAt.getTime() + Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000)); // Updated within 7 days of creation
 
         const lead = await prisma.lead.create({
             data: {
@@ -400,6 +440,7 @@ async function seed() {
                 phone_number: generatePhoneNumber(),
                 source: source,
                 status: status,
+                is_indian: Math.random() < 0.15 ? 1 : 0, // 15% chance of being Indian
                 additional_info: {
                     company: company,
                     industry: industry,
@@ -410,6 +451,8 @@ async function seed() {
                 },
                 logs: { interactions },
                 follow_ups: Math.floor(Math.random() * 5),
+                created_at: createdAt,
+                updated_at: updatedAt,
                 agents: {
                     connect: [{ id: askchimpsAgents[Math.floor(Math.random() * askchimpsAgents.length)].id }]
                 }
@@ -443,11 +486,15 @@ async function seed() {
         
         for (let j = 0; j < numInteractions; j++) {
             interactions.push({
-                date: generateRecentDate(25),
+                date: generateDistributedInteractionDate(),
                 type: interactionTypes[Math.floor(Math.random() * interactionTypes.length)],
                 note: `${interactionTypes[j % interactionTypes.length].replace('_', ' ')} - ${location} homeowner interested in solar`
             });
         }
+
+        // Get distributed creation date
+        const createdAt = new Date(generateDistributedDate());
+        const updatedAt = new Date(createdAt.getTime() + Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000)); // Updated within 7 days of creation
 
         const lead = await prisma.lead.create({
             data: {
@@ -457,6 +504,7 @@ async function seed() {
                 phone_number: generatePhoneNumber(),
                 source: source,
                 status: status,
+                is_indian: Math.random() < 0.08 ? 1 : 0, // 8% chance of being Indian (lower for solar leads)
                 additional_info: {
                     home_type: home_type,
                     roof_condition: roof_condition,
@@ -466,11 +514,13 @@ async function seed() {
                     estimated_savings: `$${estimated_savings}/year`,
                     ...(status === 'Customer' && { 
                         system_size: `${(Math.floor(Math.random() * 8) + 6)}kW`,
-                        installation_date: generateRecentDate(60)
+                        installation_date: generateDistributedDate()
                     })
                 },
                 logs: { interactions },
                 follow_ups: Math.floor(Math.random() * 4),
+                created_at: createdAt,
+                updated_at: updatedAt,
                 agents: {
                     connect: [{ id: sunrooofAgents[Math.floor(Math.random() * sunrooofAgents.length)].id }]
                 }
@@ -502,11 +552,15 @@ async function seed() {
         
         for (let j = 0; j < numInteractions; j++) {
             interactions.push({
-                date: generateRecentDate(30),
+                date: generateDistributedInteractionDate(),
                 type: interactionTypes[Math.floor(Math.random() * interactionTypes.length)],
                 note: `${interactionTypes[j % interactionTypes.length].replace('_', ' ')} - ${project_type} project discussion`
             });
         }
+
+        // Get distributed creation date
+        const createdAt = new Date(generateDistributedDate());
+        const updatedAt = new Date(createdAt.getTime() + Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000)); // Updated within 7 days of creation
 
         const lead = await prisma.lead.create({
             data: {
@@ -516,6 +570,7 @@ async function seed() {
                 phone_number: generatePhoneNumber(),
                 source: source,
                 status: status,
+                is_indian: Math.random() < 0.12 ? 1 : 0, // 12% chance of being Indian
                 additional_info: {
                     business: business,
                     project_type: project_type,
@@ -523,12 +578,14 @@ async function seed() {
                     timeline: timeline,
                     style_preference: `${style} aesthetic`,
                     ...(status === 'Completed' && { 
-                        completion_date: generateRecentDate(90),
+                        completion_date: generateDistributedDate(),
                         final_deliverables: ['Logo package', 'Brand guidelines', 'Website assets']
                     })
                 },
                 logs: { interactions },
                 follow_ups: Math.floor(Math.random() * 3),
+                created_at: createdAt,
+                updated_at: updatedAt,
                 agents: {
                     connect: [{ id: magppieAgents[Math.floor(Math.random() * magppieAgents.length)].id }]
                 }
@@ -639,6 +696,10 @@ async function seed() {
                 summary = summary.replace(`{${key}}`, String(variables[key as keyof typeof variables]));
             });
 
+            // Get distributed creation date
+            const createdAt = new Date(generateDistributedDate());
+            const updatedAt = new Date(createdAt.getTime() + Math.floor(Math.random() * 5 * 24 * 60 * 60 * 1000)); // Updated within 5 days of creation
+
             const conversation = await prisma.conversation.create({
                 data: {
                     name: `CONV-${orgName.toUpperCase()}-CHAT-${String(conversationCounter++).padStart(3, '0')}`,
@@ -651,6 +712,8 @@ async function seed() {
                     analysis: generateAnalysis(template.type, orgName),
                     prompt_tokens: Math.floor(Math.random() * 800) + 200,
                     completion_tokens: Math.floor(Math.random() * 600) + 150,
+                    created_at: createdAt,
+                    updated_at: updatedAt,
                     topics: {
                         connect: getRandomTopics(createdTopics, 2)
                     }
@@ -680,6 +743,10 @@ async function seed() {
                 summary = summary.replace(`{${key}}`, String(variables[key as keyof typeof variables]));
             });
 
+            // Get distributed creation date
+            const createdAt = new Date(generateDistributedDate());
+            const updatedAt = new Date(createdAt.getTime() + Math.floor(Math.random() * 5 * 24 * 60 * 60 * 1000)); // Updated within 5 days of creation
+
             const conversation = await prisma.conversation.create({
                 data: {
                     name: `CONV-${orgName.toUpperCase()}-CALL-${String(conversationCounter++).padStart(3, '0')}`,
@@ -694,6 +761,8 @@ async function seed() {
                     duration: Math.floor(Math.random() * 2400) + 600, // 10-50 minutes
                     prompt_tokens: Math.floor(Math.random() * 1200) + 400,
                     completion_tokens: Math.floor(Math.random() * 900) + 300,
+                    created_at: createdAt,
+                    updated_at: updatedAt,
                     topics: {
                         connect: getRandomTopics(createdTopics, 3)
                     }
@@ -858,6 +927,11 @@ async function seed() {
             content = content.replace('{system_size}', ['6kW', '8kW', '10kW', '12kW'][Math.floor(Math.random() * 4)]);
             content = content.replace('{budget_range}', ['5K-8K', '8K-12K', '12K-20K', '20K+'][Math.floor(Math.random() * 4)]);
 
+            // Get distributed creation date that's close to conversation creation date
+            const baseDate = new Date(conv.created_at);
+            const messageCreatedAt = new Date(baseDate.getTime() + (msgIndex * 2 * 60 * 1000)); // 2 minutes between messages
+            const messageUpdatedAt = new Date(messageCreatedAt.getTime() + Math.floor(Math.random() * 60 * 1000)); // Updated within 1 minute
+
             messages.push({
                 organisation_id: conv.organisation_id,
                 agent_id: conv.agent_id,
@@ -865,7 +939,9 @@ async function seed() {
                 role: role,
                 content: content,
                 prompt_tokens: promptTokens,
-                completion_tokens: completionTokens
+                completion_tokens: completionTokens,
+                created_at: messageCreatedAt,
+                updated_at: messageUpdatedAt
             });
         }
 
