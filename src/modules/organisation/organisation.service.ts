@@ -1547,7 +1547,7 @@ export class OrganisationService {
         this.logger.log(JSON.stringify({ title: `${methodName} - start`, data: { org_id_or_slug, credit_type, amount } }), methodName);
 
         try {
-            if (amount <= 0) throw new BadRequestException('Amount must be a positive integer');
+            if (amount <= 0) throw new BadRequestException('Amount must be a positive number');
 
             const isId = !isNaN(Number(org_id_or_slug));
             const whereCondition = isId ? { id: Number(org_id_or_slug) } : { slug: org_id_or_slug };
@@ -1596,7 +1596,7 @@ export class OrganisationService {
         this.logger.log(JSON.stringify({ title: `${methodName} - start`, data: { org_id_or_slug, credit_type, amount } }), methodName);
 
         try {
-            if (amount <= 0) throw new BadRequestException('Amount must be a positive integer');
+            if (amount <= 0) throw new BadRequestException('Amount must be a positive number');
 
             const isId = !isNaN(Number(org_id_or_slug));
             const whereCondition = isId ? { id: Number(org_id_or_slug) } : { slug: org_id_or_slug };
@@ -1647,7 +1647,7 @@ export class OrganisationService {
         this.logger.log(JSON.stringify({ title: `${methodName} - start`, data: { org_id_or_slug, credit_type, value } }), methodName);
 
         try {
-            if (value < 0) throw new BadRequestException('Value must be a non-negative integer');
+            if (value < 0) throw new BadRequestException('Value must be a non-negative number');
 
             const isId = !isNaN(Number(org_id_or_slug));
             const whereCondition = isId ? { id: Number(org_id_or_slug) } : { slug: org_id_or_slug };

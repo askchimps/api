@@ -19,6 +19,7 @@ import { ROLE } from '@prisma/client';
 import { GetConversationsDto, ProcessedConversationFilters } from './dto/get-conversations.dto';
 import { GetLeadsDto, ProcessedLeadFilters } from './dto/get-leads.dto';
 import { GetAnalyticsDto, ProcessedAnalyticsFilters } from './dto/get-analytics.dto';
+import { PatchCreditsDto } from './dto/patch-credits.dto';
 
 @Controller({
     path: 'organisation',
@@ -193,9 +194,9 @@ export class OrganisationController {
     @Patch(':org_id_or_slug/credits')
     async patchCredits(
         @Param('org_id_or_slug') org_id_or_slug: string,
-        @Body() body: { credit_type: 'conversation' | 'message' | 'call', operation: 'increment' | 'decrement' | 'set', amount?: number, value?: number }
+        @Body() body: PatchCreditsDto,
     ) {
-        return this.organisationService.patchCredits(org_id_or_slug, body);
+        return this.organisationService.patchCredits(org_id_or_slug, body as any);
     }
 
     // Credit management - Header Auth Protected

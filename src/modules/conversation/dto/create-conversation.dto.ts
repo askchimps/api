@@ -9,7 +9,8 @@ import {
     ValidateNested, 
     IsEnum,
     IsNotEmpty,
-    MaxLength
+    MaxLength,
+    IsNumber
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -79,9 +80,9 @@ export class CreateConversationDto {
     @IsString()
     recording_url?: string;
 
-    @Transform(({ value }) => parseInt(value))
+    @Transform(({ value }) => parseFloat(value))
     @IsOptional()
-    @IsInt()
+    @IsNumber()
     @Min(0)
     duration?: number;
 
