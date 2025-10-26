@@ -1146,47 +1146,47 @@ export class OrganisationService {
         }
     }
 
-    // async getAllAgents(user: User, idOrSlug: string) {
-    //     const methodName = 'getAllAgents';
-    //     this.logger.log(
-    //         JSON.stringify({
-    //             title: `${methodName} - start`,
-    //             data: { user, idOrSlug },
-    //         }),
-    //         methodName,
-    //     );
+    async getAllAgents(user: User, idOrSlug: string) {
+        const methodName = 'getAllAgents';
+        this.logger.log(
+            JSON.stringify({
+                title: `${methodName} - start`,
+                data: { user, idOrSlug },
+            }),
+            methodName,
+        );
 
-    //     const orgId = Number(idOrSlug);
-    //     const orgSlug = idOrSlug;
+        const orgId = Number(idOrSlug);
+        const orgSlug = idOrSlug;
 
-    //     const whereCondition: Prisma.AgentWhereInput = {
-    //         organisation: {
-    //             OR: [
-    //                 { id: isNaN(orgId) ? undefined : orgId },
-    //                 { slug: orgSlug },
-    //             ],
-    //         },
-    //     };
+        const whereCondition: Prisma.AgentWhereInput = {
+            organisation: {
+                OR: [
+                    { id: isNaN(orgId) ? undefined : orgId },
+                    { slug: orgSlug },
+                ],
+            },
+        };
 
-    //     if (!user.is_super_admin) {
-    //         whereCondition.is_deleted = 0;
-    //         whereCondition.is_disabled = 0;
-    //     }
+        if (!user.is_super_admin) {
+            whereCondition.is_deleted = 0;
+            whereCondition.is_disabled = 0;
+        }
 
-    //     const agents = await this.prisma.agent.findMany({
-    //         where: whereCondition,
-    //     });
+        const agents = await this.prisma.agent.findMany({
+            where: whereCondition,
+        });
 
-    //     this.logger.log(
-    //         JSON.stringify({
-    //             title: `${methodName} - end`,
-    //             data: agents,
-    //         }),
-    //         methodName,
-    //     );
+        this.logger.log(
+            JSON.stringify({
+                title: `${methodName} - end`,
+                data: agents,
+            }),
+            methodName,
+        );
 
-    //     return agents;
-    // }
+        return agents;
+    }
 
     async getAvailableChannels(org_id_or_slug: string): Promise<ApiResponse<{
         indian_channels: number;
@@ -1447,6 +1447,283 @@ export class OrganisationService {
                 throw error;
             }
             throw new BadRequestException('Failed to decrement active calls');
+        }
+    }
+
+    async getRemainingCredits(org_id_or_slug: string): Promise<ApiResponse<{
+        conversation_credits: number;
+        message_credits: number;
+        call_credits: number;
+        credits_plan: string;
+        total_credits: number;
+    }>> {
+        const methodName = 'getRemainingCredits';
+        this.logger.log(
+            JSON.stringify({
+                title: `${methodName} - start`,
+                data: { org_id_or_slug },
+            }),
+            methodName,
+        );
+
+        try {
+            // Check if the parameter is a number (ID) or string (slug)
+            const isId = !isNaN(Number(org_id_or_slug));
+            const whereCondition = isId 
+                ? { id: Number(org_id_or_slug) }
+                : { slug: org_id_or_slug };
+
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    ...whereCondition,
+                    is_deleted: 0,
+                    is_disabled: 0,
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                    conversation_credits: true,
+                    message_credits: true,
+                    call_credits: true,
+                    credits_plan: true,
+                },
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
+            }
+
+            // Calculate total credits based on the credits plan
+            let totalCredits = 0;
+            if (organisation.credits_plan === 'CONVERSATION') {
+                totalCredits = organisation.conversation_credits + organisation.call_credits;
+            } else if (organisation.credits_plan === 'MESSAGE') {
+                totalCredits = organisation.message_credits;
+            }
+
+            const result = {
+                conversation_credits: organisation.conversation_credits,
+                message_credits: organisation.message_credits,
+                call_credits: organisation.call_credits,
+                credits_plan: organisation.credits_plan,
+                total_credits: totalCredits,
+            };
+
+            this.logger.log(
+                JSON.stringify({
+                    title: `${methodName} - success`,
+                    data: { organisationId: organisation.id, credits: result },
+                }),
+                methodName,
+            );
+
+            return ApiResponse.success('Organisation credits retrieved successfully', result);
+        } catch (error) {
+            this.logger.error(
+                JSON.stringify({
+                    title: `${methodName} - error`,
+                    error: error?.message || 'Unknown error',
+                    stack: error?.stack,
+                }),
+                methodName,
+            );
+            
+            if (error instanceof NotFoundException || error instanceof BadRequestException) {
+                throw error;
+            }
+            throw new BadRequestException('Failed to retrieve organisation credits');
+        }
+    }
+
+    async incrementCredits(org_id_or_slug: string, credit_type: 'conversation' | 'message' | 'call', amount = 1): Promise<ApiResponse<{
+        conversation_credits: number;
+        message_credits: number;
+        call_credits: number;
+        credits_plan: string;
+        total_credits: number;
+    }>> {
+        const methodName = 'incrementCredits';
+        this.logger.log(JSON.stringify({ title: `${methodName} - start`, data: { org_id_or_slug, credit_type, amount } }), methodName);
+
+        try {
+            if (amount <= 0) throw new BadRequestException('Amount must be a positive integer');
+
+            const isId = !isNaN(Number(org_id_or_slug));
+            const whereCondition = isId ? { id: Number(org_id_or_slug) } : { slug: org_id_or_slug };
+
+            const organisation = await this.prisma.organisation.findFirst({ where: { ...whereCondition, is_deleted: 0, is_disabled: 0 } });
+            if (!organisation) throw new NotFoundException('Organisation not found');
+
+            const field = credit_type === 'conversation' ? 'conversation_credits' : credit_type === 'message' ? 'message_credits' : 'call_credits';
+
+            const current = organisation[field] ?? 0;
+            const updatedOrganisation = await this.prisma.organisation.update({ where: whereCondition, data: { [field]: current + amount } });
+
+            // Calculate total credits similar to getRemainingCredits
+            let totalCredits = 0;
+            if (updatedOrganisation.credits_plan === 'CONVERSATION') {
+                totalCredits = updatedOrganisation.conversation_credits + updatedOrganisation.call_credits;
+            } else if (updatedOrganisation.credits_plan === 'MESSAGE') {
+                totalCredits = updatedOrganisation.message_credits;
+            }
+
+            const result = {
+                conversation_credits: updatedOrganisation.conversation_credits,
+                message_credits: updatedOrganisation.message_credits,
+                call_credits: updatedOrganisation.call_credits,
+                credits_plan: updatedOrganisation.credits_plan,
+                total_credits: totalCredits,
+            };
+
+            this.logger.log(JSON.stringify({ title: `${methodName} - success`, data: result }), methodName);
+            return ApiResponse.success('Credits incremented successfully', result);
+        } catch (error) {
+            this.logger.error(JSON.stringify({ title: `${methodName} - error`, error: error?.message }), methodName);
+            if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+            throw new BadRequestException('Failed to increment credits');
+        }
+    }
+
+    async decrementCredits(org_id_or_slug: string, credit_type: 'conversation' | 'message' | 'call', amount = 1): Promise<ApiResponse<{
+        conversation_credits: number;
+        message_credits: number;
+        call_credits: number;
+        credits_plan: string;
+        total_credits: number;
+    }>> {
+        const methodName = 'decrementCredits';
+        this.logger.log(JSON.stringify({ title: `${methodName} - start`, data: { org_id_or_slug, credit_type, amount } }), methodName);
+
+        try {
+            if (amount <= 0) throw new BadRequestException('Amount must be a positive integer');
+
+            const isId = !isNaN(Number(org_id_or_slug));
+            const whereCondition = isId ? { id: Number(org_id_or_slug) } : { slug: org_id_or_slug };
+
+            const organisation = await this.prisma.organisation.findFirst({ where: { ...whereCondition, is_deleted: 0, is_disabled: 0 } });
+            if (!organisation) throw new NotFoundException('Organisation not found');
+
+            const field = credit_type === 'conversation' ? 'conversation_credits' : credit_type === 'message' ? 'message_credits' : 'call_credits';
+
+            const current = organisation[field] ?? 0;
+            const newValue = Math.max(0, current - amount);
+
+            const updatedOrganisation = await this.prisma.organisation.update({ where: whereCondition, data: { [field]: newValue } });
+
+            // Calculate total credits similar to getRemainingCredits
+            let totalCredits = 0;
+            if (updatedOrganisation.credits_plan === 'CONVERSATION') {
+                totalCredits = updatedOrganisation.conversation_credits + updatedOrganisation.call_credits;
+            } else if (updatedOrganisation.credits_plan === 'MESSAGE') {
+                totalCredits = updatedOrganisation.message_credits;
+            }
+
+            const result = {
+                conversation_credits: updatedOrganisation.conversation_credits,
+                message_credits: updatedOrganisation.message_credits,
+                call_credits: updatedOrganisation.call_credits,
+                credits_plan: updatedOrganisation.credits_plan,
+                total_credits: totalCredits,
+            };
+
+            this.logger.log(JSON.stringify({ title: `${methodName} - success`, data: result }), methodName);
+            return ApiResponse.success('Credits decremented successfully', result);
+        } catch (error) {
+            this.logger.error(JSON.stringify({ title: `${methodName} - error`, error: error?.message }), methodName);
+            if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+            throw new BadRequestException('Failed to decrement credits');
+        }
+    }
+
+    async setCredits(org_id_or_slug: string, credit_type: 'conversation' | 'message' | 'call', value: number): Promise<ApiResponse<{
+        conversation_credits: number;
+        message_credits: number;
+        call_credits: number;
+        credits_plan: string;
+        total_credits: number;
+    }>> {
+        const methodName = 'setCredits';
+        this.logger.log(JSON.stringify({ title: `${methodName} - start`, data: { org_id_or_slug, credit_type, value } }), methodName);
+
+        try {
+            if (value < 0) throw new BadRequestException('Value must be a non-negative integer');
+
+            const isId = !isNaN(Number(org_id_or_slug));
+            const whereCondition = isId ? { id: Number(org_id_or_slug) } : { slug: org_id_or_slug };
+
+            const organisation = await this.prisma.organisation.findFirst({ where: { ...whereCondition, is_deleted: 0, is_disabled: 0 } });
+            if (!organisation) throw new NotFoundException('Organisation not found');
+
+            const field = credit_type === 'conversation' ? 'conversation_credits' : credit_type === 'message' ? 'message_credits' : 'call_credits';
+
+            const updatedOrganisation = await this.prisma.organisation.update({ where: whereCondition, data: { [field]: value } });
+
+            // Calculate total credits similar to getRemainingCredits
+            let totalCredits = 0;
+            if (updatedOrganisation.credits_plan === 'CONVERSATION') {
+                totalCredits = updatedOrganisation.conversation_credits + updatedOrganisation.call_credits;
+            } else if (updatedOrganisation.credits_plan === 'MESSAGE') {
+                totalCredits = updatedOrganisation.message_credits;
+            }
+
+            const result = {
+                conversation_credits: updatedOrganisation.conversation_credits,
+                message_credits: updatedOrganisation.message_credits,
+                call_credits: updatedOrganisation.call_credits,
+                credits_plan: updatedOrganisation.credits_plan,
+                total_credits: totalCredits,
+            };
+
+            this.logger.log(JSON.stringify({ title: `${methodName} - success`, data: result }), methodName);
+            return ApiResponse.success('Credits set successfully', result);
+        } catch (error) {
+            this.logger.error(JSON.stringify({ title: `${methodName} - error`, error: error?.message }), methodName);
+            if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+            throw new BadRequestException('Failed to set credits');
+        }
+    }
+
+    /**
+     * Unified PATCH operation for credits. Body should include:
+     * {
+     *   credit_type: 'conversation' | 'message' | 'call',
+     *   operation: 'increment' | 'decrement' | 'set',
+     *   amount?: number,   // for increment/decrement
+     *   value?: number     // for set
+     * }
+     */
+    async patchCredits(org_id_or_slug: string, body: { credit_type: 'conversation' | 'message' | 'call', operation: 'increment' | 'decrement' | 'set', amount?: number, value?: number }) {
+        const methodName = 'patchCredits';
+        this.logger.log(JSON.stringify({ title: `${methodName} - start`, data: { org_id_or_slug, body } }), methodName);
+
+        const { credit_type, operation, amount, value } = body;
+
+        try {
+            if (!credit_type || !operation) {
+                throw new BadRequestException('credit_type and operation are required');
+            }
+
+            if (operation === 'increment') {
+                const useAmount = amount ?? 0;
+                return await this.incrementCredits(org_id_or_slug, credit_type, useAmount);
+            }
+
+            if (operation === 'decrement') {
+                const useAmount = amount ?? 0;
+                return await this.decrementCredits(org_id_or_slug, credit_type, useAmount);
+            }
+
+            if (operation === 'set') {
+                if (typeof value !== 'number') throw new BadRequestException('value must be provided for set operation');
+                return await this.setCredits(org_id_or_slug, credit_type, value);
+            }
+
+            throw new BadRequestException('Invalid operation');
+        } catch (error) {
+            this.logger.error(JSON.stringify({ title: `${methodName} - error`, error: error?.message }), methodName);
+            if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+            throw new BadRequestException('Failed to patch credits');
         }
     }
 

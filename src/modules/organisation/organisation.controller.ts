@@ -7,6 +7,7 @@ import {
     UseGuards,
     Post,
     Patch,
+    Body,
 } from '@nestjs/common';
 import { OrganisationService } from './organisation.service';
 import type { AuthRequest } from 'types/auth-request';
@@ -146,14 +147,15 @@ export class OrganisationController {
         );
     }
 
-    // @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
-    // @Get(':org_id_or_slug/agents')
-    // async getAllAgents(
-    //     @Req() req: AuthRequest,
-    //     @Param('org_id_or_slug') org_id_or_slug: string,
-    // ) {
-    //     return this.organisationService.getAllAgents(req.user, org_id_or_slug);
-    // }
+    @UseGuards(JwtAuthGuard, RoleGuard)
+    @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
+    @Get(':org_id_or_slug/agents')
+    async getAllAgents(
+        @Req() req: AuthRequest,
+        @Param('org_id_or_slug') org_id_or_slug: string,
+    ) {
+        return this.organisationService.getAllAgents(req.user, org_id_or_slug);
+    }
 
     // Channel Management APIs - Header Auth Protected Only
     @UseGuards(HeaderAuthGuard)
@@ -178,5 +180,52 @@ export class OrganisationController {
         @Param('call_type') call_type: 'indian' | 'international'
     ) {
         return this.organisationService.decrementActiveCalls(org_id_or_slug, call_type);
+    }
+
+    @UseGuards(HeaderAuthGuard)
+    @Get(':org_id_or_slug/credits')
+    async getRemainingCredits(@Param('org_id_or_slug') org_id_or_slug: string) {
+        return this.organisationService.getRemainingCredits(org_id_or_slug);
+    }
+
+    // Unified credits PATCH endpoint (header auth protected)
+    @UseGuards(HeaderAuthGuard)
+    @Patch(':org_id_or_slug/credits')
+    async patchCredits(
+        @Param('org_id_or_slug') org_id_or_slug: string,
+        @Body() body: { credit_type: 'conversation' | 'message' | 'call', operation: 'increment' | 'decrement' | 'set', amount?: number, value?: number }
+    ) {
+        return this.organisationService.patchCredits(org_id_or_slug, body);
+    }
+
+    // Credit management - Header Auth Protected
+    @UseGuards(HeaderAuthGuard)
+    @Post(':org_id_or_slug/credits/:credit_type/increment')
+    async incrementCredits(
+        @Param('org_id_or_slug') org_id_or_slug: string,
+        @Param('credit_type') credit_type: 'conversation' | 'message' | 'call',
+        @Body('amount') amount?: number,
+    ) {
+        return this.organisationService.incrementCredits(org_id_or_slug, credit_type, amount ?? 1);
+    }
+
+    @UseGuards(HeaderAuthGuard)
+    @Post(':org_id_or_slug/credits/:credit_type/decrement')
+    async decrementCredits(
+        @Param('org_id_or_slug') org_id_or_slug: string,
+        @Param('credit_type') credit_type: 'conversation' | 'message' | 'call',
+        @Body('amount') amount?: number,
+    ) {
+        return this.organisationService.decrementCredits(org_id_or_slug, credit_type, amount ?? 1);
+    }
+
+    @UseGuards(HeaderAuthGuard)
+    @Patch(':org_id_or_slug/credits/:credit_type')
+    async setCredits(
+        @Param('org_id_or_slug') org_id_or_slug: string,
+        @Param('credit_type') credit_type: 'conversation' | 'message' | 'call',
+        @Body('value') value: number,
+    ) {
+        return this.organisationService.setCredits(org_id_or_slug, credit_type, value);
     }
 }
