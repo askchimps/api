@@ -769,10 +769,14 @@ export class LeadService {
             }
 
             // Prepare update data
-            const { follow_ups_operation, follow_ups_value, agent_slug, ...updateDataWithoutSlug } = updateLeadDto;
+            const { follow_ups_operation, follow_ups_value, agent_slug, remove_follow_up, ...updateDataWithoutSlug } = updateLeadDto;
             const updateData: any = {
                 ...updateDataWithoutSlug,
-                next_follow_up: updateLeadDto.next_follow_up ? new Date(updateLeadDto.next_follow_up) : undefined,
+                next_follow_up: remove_follow_up === 1
+                    ? null
+                    : updateLeadDto.next_follow_up
+                        ? new Date(updateLeadDto.next_follow_up)
+                        : undefined,
             };
 
             // Handle follow_ups increment/decrement operations
@@ -971,7 +975,7 @@ export class LeadService {
             }
 
             // Prepare update data
-            const { follow_ups_operation, follow_ups_value, agent_slug, ...updateDataWithoutSlug } = updateLeadDto;
+            const { follow_ups_operation, follow_ups_value, agent_slug, remove_follow_up, ...updateDataWithoutSlug } = updateLeadDto;
             const updateData: any = {
                 ...updateDataWithoutSlug,
                 next_follow_up: updateLeadDto.next_follow_up ? new Date(updateLeadDto.next_follow_up) : undefined,

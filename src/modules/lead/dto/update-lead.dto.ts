@@ -33,6 +33,13 @@ export class UpdateLeadDto {
     @Max(1)
     is_indian?: number;
 
+    @Transform(({ value }) => parseInt(value))
+    @IsOptional()
+    @IsInt()
+    @Min(0)
+    @Max(1)
+    remove_follow_up?: number;
+
     @IsOptional()
     additional_info?: any;
 
