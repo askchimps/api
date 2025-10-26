@@ -101,9 +101,10 @@ model Agent {
 model Lead {
   id              Int       @id @default(autoincrement())
   organisation_id Int
+  zoho_id         String?   @unique
   name            String?
   email           String?
-  phone_number    String?
+  phone_number    String?   @unique
   source          String?
   status          String?
   is_indian       Int       @default(0)

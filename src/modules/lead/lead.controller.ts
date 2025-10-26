@@ -98,44 +98,44 @@ export class LeadController {
         return this.leadService.getPriorityLeads(filters);
     }
 
-    @Get(':id')
+    @Get(':id_or_phone')
     async findOne(
-        @Param('id', ParseIntPipe) id: number,
+        @Param('id_or_phone') idOrPhone: string,
         @Query('organisation') organisation?: string,
     ) {
-        return this.leadService.findOne(id, organisation);
+        return this.leadService.findOneByIdOrPhone(idOrPhone, organisation);
     }
 
-    @Patch(':id')
+    @Patch(':id_or_phone')
     async update(
-        @Param('id', ParseIntPipe) id: number,
+        @Param('id_or_phone') idOrPhone: string,
         @Body() updateLeadDto: UpdateLeadDto,
         @Query('organisation') organisation?: string,
     ) {
-        return this.leadService.update(id, updateLeadDto, organisation);
+        return this.leadService.updateByIdOrPhone(idOrPhone, updateLeadDto, organisation);
     }
 
-    @Delete(':id')
+    @Delete(':id_or_phone')
     async remove(
-        @Param('id', ParseIntPipe) id: number,
+        @Param('id_or_phone') idOrPhone: string,
         @Query('organisation') organisation?: string,
     ) {
-        return this.leadService.remove(id, organisation);
+        return this.leadService.removeByIdOrPhone(idOrPhone, organisation);
     }
 
-    @Patch(':id/mark-process')
+    @Patch(':id_or_phone/mark-process')
     async markInProcess(
-        @Param('id', ParseIntPipe) id: number,
+        @Param('id_or_phone') idOrPhone: string,
         @Query('organisation') organisation?: string,
     ) {
-        return this.leadService.markInProcess(id, organisation);
+        return this.leadService.markInProcessByIdOrPhone(idOrPhone, organisation);
     }
 
-    @Patch(':id/unmark-process')
+    @Patch(':id_or_phone/unmark-process')
     async unmarkInProcess(
-        @Param('id', ParseIntPipe) id: number,
+        @Param('id_or_phone') idOrPhone: string,
         @Query('organisation') organisation?: string,
     ) {
-        return this.leadService.unmarkInProcess(id, organisation);
+        return this.leadService.unmarkInProcessByIdOrPhone(idOrPhone, organisation);
     }
 }

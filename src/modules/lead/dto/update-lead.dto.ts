@@ -1,7 +1,11 @@
-import { IsString, IsOptional, IsEmail, IsInt, Min, Max, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsEmail, IsInt, Min, Max, IsDateString, IsIn } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class UpdateLeadDto {
+    @IsOptional()
+    @IsString()
+    agent_slug?: string;
+
     @IsOptional()
     @IsString()
     name?: string;
@@ -40,6 +44,17 @@ export class UpdateLeadDto {
     @IsInt()
     @Min(0)
     follow_ups?: number;
+
+    // New fields for follow_ups operations
+    @IsOptional()
+    @IsIn(['increment', 'decrement'])
+    follow_ups_operation?: 'increment' | 'decrement';
+
+    @Transform(({ value }) => parseInt(value))
+    @IsOptional()
+    @IsInt()
+    @Min(1)
+    follow_ups_value?: number;
 
     @IsOptional()
     @IsDateString()

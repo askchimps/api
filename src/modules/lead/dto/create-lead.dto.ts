@@ -5,8 +5,15 @@ export class CreateLeadDto {
     @IsString()
     organisation_slug: string;
 
+    @IsOptional()
+    @IsString()
+    agent_slug?: string;
+
     @IsString()
     name: string;
+
+    @IsOptional()
+    zoho_id?: string;
 
     @IsOptional()
     @IsEmail()
