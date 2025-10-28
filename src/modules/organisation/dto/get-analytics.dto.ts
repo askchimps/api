@@ -66,4 +66,7 @@ export interface AnalyticsResponse {
         source?: string;
         type?: CONVERSATION_TYPE;
     };
+    types: Array<{ label: string; value: string }>;
+    sources: Array<{ label: string; value: string }>;
+    agents: Array<{ label: string; value: string }>;
 }

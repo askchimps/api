@@ -714,14 +714,20 @@ export class OrganisationService {
                 if (endDate) leadWhere.created_at.lte = endDate;
             }
 
-            // Add source filter
+            // Add source filter (case insensitive)
             if (filters.source) {
-                leadWhere.source = filters.source;
+                leadWhere.source = {
+                    equals: filters.source,
+                    mode: 'insensitive'
+                };
             }
 
-            // Add status filter
+            // Add status filter (case insensitive)
             if (filters.status) {
-                leadWhere.status = filters.status;
+                leadWhere.status = {
+                    equals: filters.status,
+                    mode: 'insensitive'
+                };
             }
 
             // Add search filter (search in name, email, phone_number)
@@ -800,6 +806,21 @@ export class OrganisationService {
             const hasNextPage = page < totalPages;
             const hasPrevPage = page > 1;
 
+            // Hardcoded sources and status values
+            const sources = [
+                { label: 'Zoho', value: 'zoho' },
+                { label: 'Instagram', value: 'instagram' },
+                { label: 'Whatsapp', value: 'whatsapp' }
+            ];
+
+            const status = [
+                { label: 'New', value: 'new' },
+                { label: 'Follow Up', value: 'follow_up' },
+                { label: 'Reschedule', value: 'reschedule' },
+                { label: 'Qualified', value: 'qualified' },
+                { label: 'Not Qualified', value: 'not_qualified' }
+            ];
+
             const result = {
                 leads,
                 pagination: {
@@ -818,6 +839,8 @@ export class OrganisationService {
                     startDate: filters.startDate,
                     endDate: filters.endDate,
                 },
+                sources,
+                status
             };
 
             this.logger.log(
@@ -828,6 +851,177 @@ export class OrganisationService {
                         leadCount: leads.length,
                         totalCount,
                         page: page
+                    },
+                }),
+                methodName,
+            );
+
+            return result;
+        } catch (error) {
+            this.logger.error(
+                JSON.stringify({
+                    title: `${methodName} - error`,
+                    error: error?.message || 'Unknown error',
+                    stack: error?.stack,
+                }),
+                methodName,
+            );
+            throw error;
+        }
+    }
+
+    async getLeadDetails(user: User, idOrSlug: string, leadId: string) {
+        const methodName = 'getLeadDetails';
+
+        try {
+            this.logger.log(
+                JSON.stringify({
+                    title: `${methodName} - start`,
+                    data: { user, idOrSlug, leadId },
+                }),
+                methodName,
+            );
+
+            // First, find the organisation
+            const orgId = Number(idOrSlug);
+            const orgSlug = idOrSlug;
+
+            const orgWhereCondition: Prisma.OrganisationWhereInput = {
+                OR: [
+                    { id: isNaN(orgId) ? undefined : orgId },
+                    { slug: orgSlug },
+                ],
+            };
+
+            if (!user.is_super_admin) {
+                orgWhereCondition.is_deleted = 0;
+                orgWhereCondition.is_disabled = 0;
+            }
+
+            const organisation = await this.prisma.organisation.findFirst({
+                where: orgWhereCondition,
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
+            }
+
+            // Convert leadId to number
+            const numericLeadId = Number(leadId);
+            if (isNaN(numericLeadId)) {
+                throw new BadRequestException('Invalid lead ID');
+            }
+
+            // Get lead with all related data
+            const lead = await this.prisma.lead.findFirst({
+                where: {
+                    id: numericLeadId,
+                    organisation_id: organisation.id,
+                },
+                include: {
+                    agents: {
+                        select: {
+                            id: true,
+                            name: true,
+                            slug: true,
+                            base_prompt: true,
+                            image_url: true,
+                        },
+                    },
+                    conversations: {
+                        select: {
+                            id: true,
+                            name: true,
+                            type: true,
+                            source: true,
+                            summary: true,
+                            analysis: true,
+                            recording_url: true,
+                            duration: true,
+                            prompt_tokens: true,
+                            completion_tokens: true,
+                            created_at: true,
+                            updated_at: true,
+                            messages: {
+                                select: {
+                                    id: true,
+                                    content: true,
+                                    role: true,
+                                    created_at: true,
+                                },
+                                orderBy: {
+                                    created_at: 'desc',
+                                },
+                                take: 5, // Get last 5 messages from each conversation
+                            },
+                        },
+                        orderBy: {
+                            created_at: 'desc',
+                        },
+                    },
+                    organisation: {
+                        select: {
+                            id: true,
+                            name: true,
+                            slug: true,
+                        },
+                    },
+                },
+            });
+
+            if (!lead) {
+                throw new NotFoundException('Lead not found');
+            }
+
+            // Calculate some statistics
+            const totalConversations = lead.conversations.length;
+            const conversationsByType = lead.conversations.reduce((acc, conv) => {
+                acc[conv.type] = (acc[conv.type] || 0) + 1;
+                return acc;
+            }, {} as Record<string, number>);
+
+            const conversationsBySource = lead.conversations.reduce((acc, conv) => {
+                if (conv.source) {
+                    acc[conv.source] = (acc[conv.source] || 0) + 1;
+                }
+                return acc;
+            }, {} as Record<string, number>);
+
+            // Format the response with detailed information
+            const result = {
+                lead: {
+                    id: lead.id,
+                    name: lead.name,
+                    email: lead.email,
+                    phone_number: lead.phone_number,
+                    source: lead.source,
+                    status: lead.status,
+                    additional_info: lead.additional_info,
+                    follow_ups: lead.follow_ups,
+                    next_follow_up: lead.next_follow_up,
+                    zoho_id: lead.zoho_id,
+                    in_process: lead.in_process,
+                    created_at: lead.created_at,
+                    updated_at: lead.updated_at,
+                    agents: lead.agents,
+                    conversations: lead.conversations,
+                    organisation: lead.organisation,
+                },
+                statistics: {
+                    totalConversations,
+                    conversationsByType,
+                    conversationsBySource,
+                    totalMessages: lead.conversations.reduce((sum, conv) => sum + conv.messages.length, 0),
+                },
+            };
+
+            this.logger.log(
+                JSON.stringify({
+                    title: `${methodName} - end`,
+                    data: {
+                        organisationId: organisation.id,
+                        leadId: lead.id,
+                        conversationCount: totalConversations,
                     },
                 }),
                 methodName,
@@ -1021,7 +1215,7 @@ export class OrganisationService {
                 ),
                 // Average call length (duration in minutes for CALL conversations)
                 this.prisma.$queryRawUnsafe<Array<{ avg_call_length: number }>>(
-                    `SELECT AVG(c.duration::float / 60) as avg_call_length
+                    `SELECT AVG(c.duration::float) as avg_call_length
                     FROM "Conversation" c
                     WHERE c.organisation_id = ${organisation.id}
                         AND c.type = 'CALL'
@@ -1104,6 +1298,46 @@ export class OrganisationService {
                 leads: dailyAnalyticsMap.get(date)?.leads || 0,
             }));
 
+            // Fetch agents for this organization
+            const agentWhere: Prisma.AgentWhereInput = {
+                organisation_id: organisation.id,
+            };
+
+            if (!user.is_super_admin) {
+                agentWhere.is_deleted = 0;
+                agentWhere.is_disabled = 0;
+            }
+
+            const agents = await this.prisma.agent.findMany({
+                where: agentWhere,
+                select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                },
+                orderBy: {
+                    name: 'asc',
+                },
+            });
+
+            // Hardcoded types and sources
+            const types = [
+                { label: 'Call', value: 'CALL' },
+                { label: 'Chat', value: 'CHAT' }
+            ];
+
+            const sources = [
+                { label: 'Zoho', value: 'zoho' },
+                { label: 'Instagram', value: 'instagram' },
+                { label: 'Whatsapp', value: 'whatsapp' }
+            ];
+
+            // Format agents for response
+            const formattedAgents = agents.map(agent => ({
+                label: agent.name,
+                value: agent.slug
+            }));
+
             // Construct comprehensive analytics response
             const result: AnalyticsResponse = {
                 creditsPlan: organisation.credits_plan,
@@ -1122,6 +1356,9 @@ export class OrganisationService {
                     source: filters.source,
                     type: filters.type,
                 },
+                types,
+                sources,
+                agents: formattedAgents
             };
 
             this.logger.log(

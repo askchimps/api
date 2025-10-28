@@ -126,6 +126,21 @@ export class OrganisationController {
 
     @UseGuards(JwtAuthGuard, RoleGuard)
     @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
+    @Get(':org_id_or_slug/lead/:lead_id')
+    async getLeadDetails(
+        @Req() req: AuthRequest,
+        @Param('org_id_or_slug') org_id_or_slug: string,
+        @Param('lead_id') lead_id: string,
+    ) {
+        return this.organisationService.getLeadDetails(
+            req.user,
+            org_id_or_slug,
+            lead_id
+        );
+    }
+
+    @UseGuards(JwtAuthGuard, RoleGuard)
+    @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
     @Get(':org_id_or_slug/analytics')
     async getAnalytics(
         @Req() req: AuthRequest,
