@@ -79,6 +79,10 @@ export class CreateConversationDto {
     @IsOptional()
     @IsString()
     recording_url?: string;
+    
+    @IsOptional()
+    @IsString()
+    call_ended_reason?: string;
 
     @Transform(({ value }) => parseFloat(value))
     @IsOptional()

@@ -132,6 +132,7 @@ model Conversation {
   summary           String?           @db.Text
   analysis          String?           @db.Text
   recording_url     String?           @db.Text
+  call_ended_reason String?
   duration          Float?
   prompt_tokens     Int               @default(0)
   completion_tokens Int               @default(0)
