@@ -791,7 +791,6 @@ export class OrganisationService {
                         orderBy: {
                             created_at: 'desc',
                         },
-                        take: 3, // Get latest 3 conversations for each lead
                     },
                 },
                 orderBy: {
