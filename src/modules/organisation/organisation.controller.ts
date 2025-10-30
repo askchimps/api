@@ -45,14 +45,14 @@ export class OrganisationController {
     @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
     @Get(':org_id_or_slug/overview')
     async getOverview(
-        @Req() req: AuthRequest, 
+        @Req() req: AuthRequest,
         @Param('org_id_or_slug') org_id_or_slug: string,
         @Query('startDate') startDate?: string,
         @Query('endDate') endDate?: string,
     ) {
         const parsedStartDate = startDate ? new Date(startDate) : undefined;
         const parsedEndDate = endDate ? new Date(endDate) : undefined;
-        
+
         return this.organisationService.getOverview(req.user, org_id_or_slug, parsedStartDate, parsedEndDate);
     }
 
@@ -184,18 +184,20 @@ export class OrganisationController {
     @Post(':org_id_or_slug/calls/:call_type/increment')
     async incrementActiveCalls(
         @Param('org_id_or_slug') org_id_or_slug: string,
-        @Param('call_type') call_type: 'indian' | 'international'
+        @Param('call_type') call_type: 'indian' | 'international',
+        @Query('lead_id') lead_id?: number,
     ) {
-        return this.organisationService.incrementActiveCalls(org_id_or_slug, call_type);
+        return this.organisationService.incrementActiveCalls(org_id_or_slug, call_type, lead_id);
     }
 
     @UseGuards(HeaderAuthGuard)
     @Post(':org_id_or_slug/calls/:call_type/decrement')
     async decrementActiveCalls(
         @Param('org_id_or_slug') org_id_or_slug: string,
-        @Param('call_type') call_type: 'indian' | 'international'
+        @Param('call_type') call_type: 'indian' | 'international',
+        @Query('lead_id') lead_id?: number,
     ) {
-        return this.organisationService.decrementActiveCalls(org_id_or_slug, call_type);
+        return this.organisationService.decrementActiveCalls(org_id_or_slug, call_type, lead_id);
     }
 
     @UseGuards(HeaderAuthGuard)

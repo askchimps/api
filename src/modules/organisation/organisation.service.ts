@@ -1441,7 +1441,7 @@ export class OrganisationService {
         try {
             // Check if the parameter is a number (ID) or string (slug)
             const isId = !isNaN(Number(org_id_or_slug));
-            const whereCondition = isId 
+            const whereCondition = isId
                 ? { id: Number(org_id_or_slug) }
                 : { slug: org_id_or_slug };
 
@@ -1484,7 +1484,7 @@ export class OrganisationService {
                 }),
                 methodName,
             );
-            
+
             if (error instanceof NotFoundException) {
                 throw error;
             }
@@ -1492,7 +1492,7 @@ export class OrganisationService {
         }
     }
 
-    async incrementActiveCalls(org_id_or_slug: string, call_type: 'indian' | 'international'): Promise<ApiResponse<{
+    async incrementActiveCalls(org_id_or_slug: string, call_type: 'indian' | 'international', lead_id?: number): Promise<ApiResponse<{
         active_indian_calls: number;
         active_international_calls: number;
         available_channels: {
@@ -1513,7 +1513,7 @@ export class OrganisationService {
         try {
             // Check if the parameter is a number (ID) or string (slug)
             const isId = !isNaN(Number(org_id_or_slug));
-            const whereCondition = isId 
+            const whereCondition = isId
                 ? { id: Number(org_id_or_slug) }
                 : { slug: org_id_or_slug };
 
@@ -1530,24 +1530,28 @@ export class OrganisationService {
             }
 
             // Check availability for the specific call type
-            const availableChannels = call_type === 'indian' 
-                ? organisation.available_indian_channels 
+            const availableChannels = call_type === 'indian'
+                ? organisation.available_indian_channels
                 : organisation.available_international_channels;
-            
-            const activeCallsForType = call_type === 'indian' 
+
+            const activeCallsForType = call_type === 'indian'
                 ? organisation.active_indian_calls || 0
                 : organisation.active_international_calls || 0;
-            
+
             if (activeCallsForType >= availableChannels) {
                 throw new BadRequestException(`No available ${call_type} channels to increment active calls`);
             }
 
             // Update the appropriate field
             const updateField = call_type === 'indian' ? 'active_indian_calls' : 'active_international_calls';
+            const leadIdField = call_type === 'indian' ? 'active_indian_call_lead_ids' : 'active_international_call_lead_ids';
             const updatedOrganisation = await this.prisma.organisation.update({
                 where: whereCondition,
                 data: {
                     [updateField]: activeCallsForType + 1,
+                    [leadIdField]: {
+                        push: lead_id
+                    }
                 }
             });
 
@@ -1583,7 +1587,7 @@ export class OrganisationService {
                 }),
                 methodName,
             );
-            
+
             if (error instanceof NotFoundException || error instanceof BadRequestException) {
                 throw error;
             }
@@ -1591,7 +1595,7 @@ export class OrganisationService {
         }
     }
 
-    async decrementActiveCalls(org_id_or_slug: string, call_type: 'indian' | 'international'): Promise<ApiResponse<{
+    async decrementActiveCalls(org_id_or_slug: string, call_type: 'indian' | 'international', lead_id?: number): Promise<ApiResponse<{
         active_indian_calls: number;
         active_international_calls: number;
         available_channels: {
@@ -1612,7 +1616,7 @@ export class OrganisationService {
         try {
             // Check if the parameter is a number (ID) or string (slug)
             const isId = !isNaN(Number(org_id_or_slug));
-            const whereCondition = isId 
+            const whereCondition = isId
                 ? { id: Number(org_id_or_slug) }
                 : { slug: org_id_or_slug };
 
@@ -1629,7 +1633,7 @@ export class OrganisationService {
             }
 
             // Check active calls for the specific call type
-            const activeCallsForType = call_type === 'indian' 
+            const activeCallsForType = call_type === 'indian'
                 ? organisation.active_indian_calls || 0
                 : organisation.active_international_calls || 0;
 
@@ -1639,10 +1643,14 @@ export class OrganisationService {
 
             // Update the appropriate field
             const updateField = call_type === 'indian' ? 'active_indian_calls' : 'active_international_calls';
+            const leadIdField = call_type === 'indian' ? 'active_indian_call_lead_ids' : 'active_international_call_lead_ids';
             const updatedOrganisation = await this.prisma.organisation.update({
                 where: whereCondition,
                 data: {
                     [updateField]: activeCallsForType - 1,
+                    [leadIdField]: {
+                        set: organisation[leadIdField]?.filter(id => id !== lead_id) || []
+                    }
                 }
             });
 
@@ -1678,7 +1686,7 @@ export class OrganisationService {
                 }),
                 methodName,
             );
-            
+
             if (error instanceof NotFoundException || error instanceof BadRequestException) {
                 throw error;
             }
@@ -1705,7 +1713,7 @@ export class OrganisationService {
         try {
             // Check if the parameter is a number (ID) or string (slug)
             const isId = !isNaN(Number(org_id_or_slug));
-            const whereCondition = isId 
+            const whereCondition = isId
                 ? { id: Number(org_id_or_slug) }
                 : { slug: org_id_or_slug };
 
@@ -1764,7 +1772,7 @@ export class OrganisationService {
                 }),
                 methodName,
             );
-            
+
             if (error instanceof NotFoundException || error instanceof BadRequestException) {
                 throw error;
             }
