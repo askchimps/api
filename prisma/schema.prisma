@@ -25,6 +25,12 @@ enum CONVERSATION_TYPE {
   CALL
 }
 
+enum COST_TYPE {
+  CHAT
+  MESSAGE
+  CALL
+}
+
 model User {
   id             String   @id
   name           String
@@ -53,9 +59,9 @@ model Organisation {
   updated_at                         DateTime     @default(now()) @updatedAt
   updated_by_user                    String
   active_indian_calls                Int          @default(0)
-  active_indian_call_lead_ids        Int[]        @default([])
+  active_indian_call_lead_ids        String[]     @default([])
   active_international_calls         Int          @default(0)
-  active_international_call_lead_ids Int[]        @default([])
+  active_international_call_lead_ids String[]     @default([])
   available_indian_channels          Int          @default(1)
   available_international_channels   Int          @default(1)
 
@@ -64,6 +70,9 @@ model Organisation {
   conversations      Conversation[]
   messages           Message[]
   leads              Lead[]
+  payments           Payment[]
+  costs              Cost[]
+  credit_history     CreditHistory[]
 }
 
 model UserOrganisation {
@@ -75,6 +84,46 @@ model UserOrganisation {
   updated_at      DateTime @default(now()) @updatedAt
 
   user         User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id              Int      @id @default(autoincrement())
+  organisation_id Int
+  amount          Int
+  currency        String
+  details         String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @default(now()) @updatedAt
+
+  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
+}
+
+model Cost {
+  id              Int       @id @default(autoincrement())
+  organisation_id Int
+  conversation_id Int?      @unique
+  type            COST_TYPE
+  amount          Float
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @default(now()) @updatedAt
+
+  organisation Organisation  @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+}
+
+model CreditHistory {
+  id              Int      @id @default(autoincrement())
+  organisation_id Int
+  change_amount   Float
+  change_type     String
+  change_field    String
+  prev_value      Float
+  new_value       Float
+  reason          String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @default(now()) @updatedAt
+
   organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
 }
 
@@ -125,7 +174,7 @@ model Lead {
 
 model Conversation {
   id                Int               @id @default(autoincrement())
-  name              String            @unique
+  name              String
   type              CONVERSATION_TYPE @default(CHAT)
   organisation_id   Int
   agent_id          Int
@@ -148,6 +197,7 @@ model Conversation {
   messages     Message[]
   lead         Lead?        @relation(fields: [lead_id], references: [id], onDelete: Cascade)
   topics       Topic[]
+  cost         Cost?
 
   @@index([organisation_id, created_at])
   @@index([organisation_id, agent_id, created_at])

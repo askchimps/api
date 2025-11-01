@@ -185,7 +185,7 @@ export class OrganisationController {
     async incrementActiveCalls(
         @Param('org_id_or_slug') org_id_or_slug: string,
         @Param('call_type') call_type: 'indian' | 'international',
-        @Query('lead_id') lead_id?: number,
+        @Query('lead_id') lead_id?: string,
     ) {
         return this.organisationService.incrementActiveCalls(org_id_or_slug, call_type, lead_id);
     }
@@ -195,7 +195,7 @@ export class OrganisationController {
     async decrementActiveCalls(
         @Param('org_id_or_slug') org_id_or_slug: string,
         @Param('call_type') call_type: 'indian' | 'international',
-        @Query('lead_id') lead_id?: number,
+        @Query('lead_id') lead_id?: string,
     ) {
         return this.organisationService.decrementActiveCalls(org_id_or_slug, call_type, lead_id);
     }

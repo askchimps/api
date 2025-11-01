@@ -1,5 +1,6 @@
 import { PinoLoggerService } from "@modules/common/logger/pinoLogger.service";
 import { PrismaService } from "@modules/common/prisma/prisma.service";
+import { CreditHistoryService } from "@modules/credit-history/credit-history.service";
 import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
 import { ApiResponse } from '@helpers/api-response.helper';
 import { CONVERSATION_TYPE, Prisma, User } from "@prisma/client";
@@ -11,7 +12,8 @@ import { ProcessedAnalyticsFilters, AnalyticsResponse, ConversationAnalytics, Da
 export class OrganisationService {
     constructor(
         private readonly logger: PinoLoggerService,
-        private readonly prisma: PrismaService
+        private readonly prisma: PrismaService,
+        private readonly creditHistoryService: CreditHistoryService,
     ) { }
 
     async getAll(user: User) {
@@ -1492,7 +1494,7 @@ export class OrganisationService {
         }
     }
 
-    async incrementActiveCalls(org_id_or_slug: string, call_type: 'indian' | 'international', lead_id?: number): Promise<ApiResponse<{
+    async incrementActiveCalls(org_id_or_slug: string, call_type: 'indian' | 'international', lead_id?: string): Promise<ApiResponse<{
         active_indian_calls: number;
         active_international_calls: number;
         available_channels: {
@@ -1595,7 +1597,7 @@ export class OrganisationService {
         }
     }
 
-    async decrementActiveCalls(org_id_or_slug: string, call_type: 'indian' | 'international', lead_id?: number): Promise<ApiResponse<{
+    async decrementActiveCalls(org_id_or_slug: string, call_type: 'indian' | 'international', lead_id?: string): Promise<ApiResponse<{
         active_indian_calls: number;
         active_international_calls: number;
         available_channels: {
@@ -1802,7 +1804,19 @@ export class OrganisationService {
             const field = credit_type === 'conversation' ? 'conversation_credits' : credit_type === 'message' ? 'message_credits' : 'call_credits';
 
             const current = organisation[field] ?? 0;
-            const updatedOrganisation = await this.prisma.organisation.update({ where: whereCondition, data: { [field]: current + amount } });
+            const newValue = current + amount;
+            const updatedOrganisation = await this.prisma.organisation.update({ where: whereCondition, data: { [field]: newValue } });
+
+            // Log credit history
+            await this.creditHistoryService.create({
+                organisation_id: organisation.id,
+                change_amount: amount,
+                change_type: 'increment',
+                change_field: field,
+                prev_value: current,
+                new_value: newValue,
+                reason: `Credits incremented via API - ${credit_type} credits increased by ${amount}`,
+            });
 
             // Calculate total credits similar to getRemainingCredits
             let totalCredits = 0;
@@ -1855,6 +1869,17 @@ export class OrganisationService {
 
             const updatedOrganisation = await this.prisma.organisation.update({ where: whereCondition, data: { [field]: newValue } });
 
+            // Log credit history
+            await this.creditHistoryService.create({
+                organisation_id: organisation.id,
+                change_amount: -amount,
+                change_type: 'decrement',
+                change_field: field,
+                prev_value: current,
+                new_value: newValue,
+                reason: `Credits decremented via API - ${credit_type} credits decreased by ${amount}`,
+            });
+
             // Calculate total credits similar to getRemainingCredits
             let totalCredits = 0;
             if (updatedOrganisation.credits_plan === 'CONVERSATION') {
@@ -1900,8 +1925,21 @@ export class OrganisationService {
             if (!organisation) throw new NotFoundException('Organisation not found');
 
             const field = credit_type === 'conversation' ? 'conversation_credits' : credit_type === 'message' ? 'message_credits' : 'call_credits';
+            const current = organisation[field] ?? 0;
+            const changeAmount = value - current;
 
             const updatedOrganisation = await this.prisma.organisation.update({ where: whereCondition, data: { [field]: value } });
+
+            // Log credit history
+            await this.creditHistoryService.create({
+                organisation_id: organisation.id,
+                change_amount: changeAmount,
+                change_type: 'set',
+                change_field: field,
+                prev_value: current,
+                new_value: value,
+                reason: `Credits set via API - ${credit_type} credits set to ${value}`,
+            });
 
             // Calculate total credits similar to getRemainingCredits
             let totalCredits = 0;
