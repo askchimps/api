@@ -211,7 +211,8 @@ export class LeadService {
 
             if (filters.search) {
                 whereCondition.OR = [
-                    { name: { contains: filters.search, mode: 'insensitive' } },
+                    { first_name: { contains: filters.search, mode: 'insensitive' } },
+                    { last_name: { contains: filters.search, mode: 'insensitive' } },
                     { email: { contains: filters.search, mode: 'insensitive' } },
                     { phone_number: { contains: filters.search, mode: 'insensitive' } },
                 ];
@@ -339,7 +340,8 @@ export class LeadService {
 
             if (filters.search) {
                 whereCondition.OR = [
-                    { name: { contains: filters.search, mode: 'insensitive' } },
+                    { first_name: { contains: filters.search, mode: 'insensitive' } },
+                    { last_name: { contains: filters.search, mode: 'insensitive' } },
                     { email: { contains: filters.search, mode: 'insensitive' } },
                     { phone_number: { contains: filters.search, mode: 'insensitive' } },
                 ];
@@ -784,7 +786,28 @@ export class LeadService {
                 const currentFollowUps = existingLead.follow_ups || 0;
 
                 if (follow_ups_operation === 'increment') {
-                    updateData.follow_ups = currentFollowUps + follow_ups_value;
+                    const newFollowUps = currentFollowUps + follow_ups_value;
+                    updateData.follow_ups = newFollowUps;
+
+                    // Auto-calculate next_follow_up if not provided in request
+                    if (!updateLeadDto.next_follow_up) {
+                        const now = new Date();
+                        
+                        if (currentFollowUps === 0) {
+                            // First follow up: current time + 1 hour
+                            const nextFollowUp = new Date(now.getTime() + (1 * 60 * 60 * 1000));
+                            updateData.next_follow_up = nextFollowUp;
+                        } else if (currentFollowUps === 1) {
+                            // Second follow up: current time + 1 day
+                            const nextFollowUp = new Date(now.getTime() + (1 * 24 * 60 * 60 * 1000));
+                            updateData.next_follow_up = nextFollowUp;
+                        } else if (currentFollowUps === 2) {
+                            // Third follow up: current time + 2 days
+                            const nextFollowUp = new Date(now.getTime() + (2 * 24 * 60 * 60 * 1000));
+                            updateData.next_follow_up = nextFollowUp;
+                        }
+                        // For follow_ups >= 3, don't set next_follow_up automatically
+                    }
                 } else if (follow_ups_operation === 'decrement') {
                     updateData.follow_ups = Math.max(0, currentFollowUps - follow_ups_value); // Ensure it doesn't go below 0
                 }
@@ -990,7 +1013,28 @@ export class LeadService {
                 const currentFollowUps = existingLead.follow_ups || 0;
 
                 if (follow_ups_operation === 'increment') {
-                    updateData.follow_ups = currentFollowUps + follow_ups_value;
+                    const newFollowUps = currentFollowUps + follow_ups_value;
+                    updateData.follow_ups = newFollowUps;
+
+                    // Auto-calculate next_follow_up if not provided in request
+                    if (!updateLeadDto.next_follow_up) {
+                        const now = new Date();
+                        
+                        if (currentFollowUps === 0) {
+                            // First follow up: current time + 1 hour
+                            const nextFollowUp = new Date(now.getTime() + (1 * 60 * 60 * 1000));
+                            updateData.next_follow_up = nextFollowUp;
+                        } else if (currentFollowUps === 1) {
+                            // Second follow up: current time + 1 day
+                            const nextFollowUp = new Date(now.getTime() + (1 * 24 * 60 * 60 * 1000));
+                            updateData.next_follow_up = nextFollowUp;
+                        } else if (currentFollowUps === 2) {
+                            // Third follow up: current time + 2 days
+                            const nextFollowUp = new Date(now.getTime() + (2 * 24 * 60 * 60 * 1000));
+                            updateData.next_follow_up = nextFollowUp;
+                        }
+                        // For follow_ups >= 3, don't set next_follow_up automatically
+                    }
                 } else if (follow_ups_operation === 'decrement') {
                     updateData.follow_ups = Math.max(0, currentFollowUps - follow_ups_value); // Ensure it doesn't go below 0
                 }

@@ -139,7 +139,7 @@ export class ConversationService {
         );
 
         try {
-            const { organisation: organisation_slug, agent: agent_slug, lead, messages, ...conversationData } = createConversationDto;
+            const { organisation: organisation_slug, agent: agent_slug, lead, messages, costs, ...conversationData } = createConversationDto;
 
             // Verify organisation exists and is active
             const organisation = await this.prisma.organisation.findFirst({
@@ -229,7 +229,7 @@ export class ConversationService {
                             select: { id: true, name: true, slug: true }
                         },
                         lead: {
-                            select: { id: true, name: true, email: true, phone_number: true }
+                            select: { id: true, first_name: true, last_name: true, email: true, phone_number: true }
                         },
                         messages: {
                             orderBy: { created_at: 'asc' }
@@ -251,16 +251,39 @@ export class ConversationService {
                     )
                 );
 
+                // Create all costs for the conversation if provided
+                let createdCosts: any[] = [];
+                if (costs && costs.length > 0) {
+                    createdCosts = await Promise.all(
+                        costs.map(costData =>
+                            prisma.cost.create({
+                                data: {
+                                    ...costData,
+                                    organisation_id: organisation.id,
+                                    conversation_id: conversation.id,
+                                }
+                            })
+                        )
+                    );
+                }
+
                 // Update conversation with total token counts from messages
                 const totalPromptTokens = conversation.prompt_tokens + createdMessages.reduce((sum, msg) => sum + msg.prompt_tokens, 0);
                 const totalCompletionTokens = conversation.completion_tokens + createdMessages.reduce((sum, msg) => sum + msg.completion_tokens, 0);
+                
+                // Calculate total cost from individual costs if not provided
+                let finalTotalCost = conversationData.total_cost;
+                if (!finalTotalCost && createdCosts.length > 0) {
+                    finalTotalCost = createdCosts.reduce((sum, cost) => sum + cost.amount, 0);
+                }
 
-                // Update the conversation with aggregated token counts
+                // Update the conversation with aggregated token counts and total cost
                 const updatedConversation = await prisma.conversation.update({
                     where: { id: conversation.id },
                     data: {
                         prompt_tokens: totalPromptTokens,
                         completion_tokens: totalCompletionTokens,
+                        total_cost: finalTotalCost,
                     },
                     include: {
                         organisation: {
@@ -270,11 +293,12 @@ export class ConversationService {
                             select: { id: true, name: true, slug: true }
                         },
                         lead: {
-                            select: { id: true, name: true, email: true, phone_number: true }
+                            select: { id: true, first_name: true, last_name: true, email: true, phone_number: true }
                         },
                         messages: {
                             orderBy: { created_at: 'asc' }
-                        }
+                        },
+                        cost: true
                     }
                 });
 
@@ -286,9 +310,11 @@ export class ConversationService {
                     title: `${methodName} - success`,
                     data: {
                         conversationId: result.id,
-                        messageCount: result.messages?.length || 0,
+                        messageCount: messages?.length || 0,
+                        costCount: costs?.length || 0,
                         totalPromptTokens: result.prompt_tokens,
-                        totalCompletionTokens: result.completion_tokens
+                        totalCompletionTokens: result.completion_tokens,
+                        totalCost: result.total_cost
                     },
                 }),
                 methodName,

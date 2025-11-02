@@ -26,9 +26,11 @@ enum CONVERSATION_TYPE {
 }
 
 enum COST_TYPE {
-  CHAT
-  MESSAGE
-  CALL
+  STT
+  LLM
+  TTS
+  VAPI
+  MISC
 }
 
 model User {
@@ -64,6 +66,8 @@ model Organisation {
   active_international_call_lead_ids String[]     @default([])
   available_indian_channels          Int          @default(1)
   available_international_channels   Int          @default(1)
+  income                             Float        @default(0)
+  expenses                           Float        @default(0)
 
   user_organisations UserOrganisation[]
   agents             Agent[]
@@ -153,8 +157,8 @@ model Agent {
 model Lead {
   id              Int       @id @default(autoincrement())
   organisation_id Int
-  zoho_id         String?   @unique
-  name            String?
+  first_name      String?
+  last_name       String?
   email           String?
   phone_number    String?   @unique
   source          String?
@@ -167,6 +171,22 @@ model Lead {
   updated_at      DateTime  @default(now()) @updatedAt
   next_follow_up  DateTime?
   in_process      Int       @default(0)
+
+  zoho_id               String? @unique
+  zoho_lead_owner       String?
+  zoho_lead_owner_id    String?
+  zoho_first_name       String?
+  zoho_last_name        String?
+  zoho_mobile           String?
+  zoho_email            String?
+  zoho_status           String?
+  zoho_lead_disposition String?
+  zoho_lead_source      String?
+  zoho_country          String?
+  zoho_state            String?
+  zoho_city             String?
+  zoho_street           String?
+  zoho_description      String?
 
   organisation  Organisation   @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
   agents        Agent[]
@@ -192,6 +212,7 @@ model Conversation {
   is_deleted        Int               @default(0)
   created_at        DateTime          @default(now())
   updated_at        DateTime          @default(now()) @updatedAt
+  total_cost        Float?
 
   organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
   agent        Agent        @relation(fields: [agent_id], references: [id], onDelete: Cascade)

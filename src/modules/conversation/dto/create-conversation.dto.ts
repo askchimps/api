@@ -14,6 +14,20 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
+export class CreateCostDto {
+    @IsEnum(['STT', 'LLM', 'TTS', 'VAPI', 'MISC'])
+    type: 'STT' | 'LLM' | 'TTS' | 'VAPI' | 'MISC';
+
+    @Transform(({ value }) => parseFloat(value))
+    @IsNumber()
+    @Min(0)
+    amount: number;
+
+    @IsOptional()
+    @IsString()
+    summary?: string;
+}
+
 export class CreateMessageDto {
     @IsString()
     @IsNotEmpty()
@@ -102,8 +116,20 @@ export class CreateConversationDto {
     @Min(0)
     completion_tokens?: number = 0;
 
+    @Transform(({ value }) => parseFloat(value))
+    @IsOptional()
+    @IsNumber()
+    @Min(0)
+    total_cost?: number;
+
     @IsArray()
     @ValidateNested({ each: true })
     @Type(() => CreateMessageDto)
     messages: CreateMessageDto[];
+
+    @IsOptional()
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => CreateCostDto)
+    costs?: CreateCostDto[];
 }

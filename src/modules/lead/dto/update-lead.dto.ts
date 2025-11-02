@@ -8,7 +8,11 @@ export class UpdateLeadDto {
 
     @IsOptional()
     @IsString()
-    name?: string;
+    first_name?: string;
+
+    @IsOptional()
+    @IsString()
+    last_name?: string;
 
     @IsOptional()
     @IsEmail()
@@ -73,4 +77,65 @@ export class UpdateLeadDto {
     @Min(0)
     @Max(1)
     in_process?: number;
+
+    // Zoho fields
+    @IsOptional()
+    @IsString()
+    zoho_id?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_lead_owner?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_lead_owner_id?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_first_name?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_last_name?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_mobile?: string;
+
+    @IsOptional()
+    @IsEmail()
+    zoho_email?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_status?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_lead_disposition?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_lead_source?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_country?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_state?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_city?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_street?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_description?: string;
 }
