@@ -14,7 +14,7 @@ export class RoleGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
     private readonly prisma: PrismaService,
-  ) { }
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredRoles = this.reflector.get<ROLE[]>(
@@ -52,7 +52,11 @@ export class RoleGuard implements CanActivate {
           user_id: user.id,
           organisation: {
             OR: [
-              { id: isNaN(Number(org_id_or_slug)) ? undefined : Number(org_id_or_slug) },
+              {
+                id: isNaN(Number(org_id_or_slug))
+                  ? undefined
+                  : Number(org_id_or_slug),
+              },
               { slug: org_id_or_slug },
             ],
           },

@@ -3,7 +3,7 @@ import { ConversationController } from './conversation.controller';
 import { ConversationService } from './conversation.service';
 
 @Module({
-    controllers: [ConversationController],
-    providers: [ConversationService],
+  controllers: [ConversationController],
+  providers: [ConversationService],
 })
-export class ConversationModule { }
+export class ConversationModule {}

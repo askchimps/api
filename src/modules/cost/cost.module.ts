@@ -5,9 +5,9 @@ import { PrismaModule } from '@modules/common/prisma/prisma.module';
 import { LoggerModule } from '@modules/common/logger/logger.module';
 
 @Module({
-    imports: [PrismaModule, LoggerModule],
-    controllers: [CostController],
-    providers: [CostService],
-    exports: [CostService],
+  imports: [PrismaModule, LoggerModule],
+  controllers: [CostController],
+  providers: [CostService],
+  exports: [CostService],
 })
 export class CostModule {}

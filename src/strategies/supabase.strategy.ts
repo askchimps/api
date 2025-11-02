@@ -19,7 +19,7 @@ export class SupabaseStrategy extends PassportStrategy(Strategy) {
   constructor(
     readonly configService: ConfigService,
     private readonly prisma: PrismaService,
-    private readonly logger: PinoLoggerService
+    private readonly logger: PinoLoggerService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),

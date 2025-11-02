@@ -7,8 +7,8 @@ import { SupabaseStrategy } from '@strategies/supabase.strategy';
 import { CreditHistoryModule } from '@modules/credit-history/credit-history.module';
 
 @Module({
-    imports: [CreditHistoryModule],
-    controllers: [OrganisationController],
-    providers: [OrganisationService, JwtAuthGuard, RoleGuard, SupabaseStrategy],
+  imports: [CreditHistoryModule],
+  controllers: [OrganisationController],
+  providers: [OrganisationService, JwtAuthGuard, RoleGuard, SupabaseStrategy],
 })
-export class OrganisationModule { }
+export class OrganisationModule {}

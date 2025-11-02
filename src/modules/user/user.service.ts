@@ -8,7 +8,7 @@ export class UserService {
   constructor(
     private readonly logger: PinoLoggerService,
     private readonly prisma: PrismaService,
-  ) { }
+  ) {}
 
   async sync(data: SyncUserDTO) {
     const methodName = 'sync';

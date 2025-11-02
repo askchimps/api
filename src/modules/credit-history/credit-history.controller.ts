@@ -1,11 +1,11 @@
 import {
-    Controller,
-    Get,
-    Param,
-    Query,
-    ParseIntPipe,
-    UseGuards,
-    Req,
+  Controller,
+  Get,
+  Param,
+  Query,
+  ParseIntPipe,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
 import { CreditHistoryService } from './credit-history.service';
 import { GetCreditHistoryQueryDto } from './dto/get-credit-history.dto';
@@ -19,15 +19,21 @@ import type { AuthRequest } from 'types/auth-request';
 @UseGuards(JwtAuthGuard, RoleGuard)
 @Role(ROLE.USER) // Any authenticated user can view their organization's credit history
 export class CreditHistoryController {
-    constructor(private readonly creditHistoryService: CreditHistoryService) {}
+  constructor(private readonly creditHistoryService: CreditHistoryService) {}
 
-    @Get()
-    async findAll(@Req() req: AuthRequest, @Query() query: GetCreditHistoryQueryDto) {
-        return this.creditHistoryService.findAll(req.user, query);
-    }
+  @Get()
+  async findAll(
+    @Req() req: AuthRequest,
+    @Query() query: GetCreditHistoryQueryDto,
+  ) {
+    return this.creditHistoryService.findAll(req.user, query);
+  }
 
-    @Get(':id')
-    async findOne(@Req() req: AuthRequest, @Param('id', ParseIntPipe) id: number) {
-        return this.creditHistoryService.findOne(req.user, id);
-    }
+  @Get(':id')
+  async findOne(
+    @Req() req: AuthRequest,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.creditHistoryService.findOne(req.user, id);
+  }
 }

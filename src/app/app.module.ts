@@ -33,7 +33,7 @@ const appModules: NestModuleImport[] = [
   ConversationModule,
   CostModule,
   PaymentModule,
-  CreditHistoryModule
+  CreditHistoryModule,
 ];
 
 // Infrastructure Modules (DB, config) used by the server
@@ -46,10 +46,9 @@ const infrastructureModules: NestModuleImport[] = [
   PrismaModule,
 ];
 
-
 @Module({
   imports: [...infrastructureModules, ...appModules],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

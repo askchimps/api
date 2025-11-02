@@ -5,9 +5,9 @@ import { PrismaModule } from '@modules/common/prisma/prisma.module';
 import { LoggerModule } from '@modules/common/logger/logger.module';
 
 @Module({
-    imports: [PrismaModule, LoggerModule],
-    controllers: [CreditHistoryController],
-    providers: [CreditHistoryService],
-    exports: [CreditHistoryService],
+  imports: [PrismaModule, LoggerModule],
+  controllers: [CreditHistoryController],
+  providers: [CreditHistoryService],
+  exports: [CreditHistoryService],
 })
 export class CreditHistoryModule {}
