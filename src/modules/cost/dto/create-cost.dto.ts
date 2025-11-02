@@ -18,4 +18,8 @@ export class CreateCostDto {
     @IsNumber()
     @Type(() => Number)
     amount: number;
+
+    @IsString()
+    @IsOptional()
+    summary?: string;
 }

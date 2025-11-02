@@ -105,6 +105,7 @@ model Cost {
   conversation_id Int?      @unique
   type            COST_TYPE
   amount          Float
+  summary         String?
   created_at      DateTime  @default(now())
   updated_at      DateTime  @default(now()) @updatedAt
 
