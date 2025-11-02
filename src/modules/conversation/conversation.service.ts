@@ -338,7 +338,7 @@ export class ConversationService {
             messages: {
               orderBy: { created_at: 'asc' },
             },
-            cost: true,
+            costs: true,
           },
         });
 
