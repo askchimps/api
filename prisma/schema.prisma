@@ -172,21 +172,24 @@ model Lead {
   next_follow_up  DateTime?
   in_process      Int       @default(0)
 
-  zoho_id               String? @unique
-  zoho_lead_owner       String?
-  zoho_lead_owner_id    String?
-  zoho_first_name       String?
-  zoho_last_name        String?
-  zoho_mobile           String?
-  zoho_email            String?
-  zoho_status           String?
-  zoho_lead_disposition String?
-  zoho_lead_source      String?
-  zoho_country          String?
-  zoho_state            String?
-  zoho_city             String?
-  zoho_street           String?
-  zoho_description      String?
+  zoho_id                    String? @unique
+  zoho_lead_owner            String?
+  zoho_lead_owner_id         String?
+  zoho_lead_owner_first_name String?
+  zoho_lead_owner_last_name  String?
+  zoho_lead_owner_phone      String?
+  zoho_first_name            String?
+  zoho_last_name             String?
+  zoho_mobile                String?
+  zoho_email                 String?
+  zoho_status                String?
+  zoho_lead_disposition      String?
+  zoho_lead_source           String?
+  zoho_country               String?
+  zoho_state                 String?
+  zoho_city                  String?
+  zoho_street                String?
+  zoho_description           String?
 
   organisation  Organisation   @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
   agents        Agent[]

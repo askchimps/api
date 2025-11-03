@@ -76,6 +76,18 @@ export class GetLeadsDto {
   @Min(0)
   @Max(1)
   in_process?: number; // 0 for not in process, 1 for in process
+
+  @IsOptional()
+  @IsString()
+  zoho_status?: string; // Filter by Zoho status
+
+  @IsOptional()
+  @IsString()
+  zoho_lead_owner?: string; // Filter by Zoho lead owner
+
+  @IsOptional()
+  @IsString()
+  zoho_lead_source?: string; // Filter by Zoho lead source
 }
 
 export interface ProcessedLeadFilters {
@@ -93,4 +105,7 @@ export interface ProcessedLeadFilters {
   hasFollowUp?: number;
   in_process?: number;
   organisationSlug?: string;
+  zoho_status?: string;
+  zoho_lead_owner?: string;
+  zoho_lead_source?: string;
 }

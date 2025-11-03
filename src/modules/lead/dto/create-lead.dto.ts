@@ -86,6 +86,18 @@ export class CreateLeadDto {
 
   @IsOptional()
   @IsString()
+  zoho_lead_owner_first_name?: string;
+
+  @IsOptional()
+  @IsString()
+  zoho_lead_owner_last_name?: string;
+
+  @IsOptional()
+  @IsString()
+  zoho_lead_owner_phone?: string;
+
+  @IsOptional()
+  @IsString()
   zoho_first_name?: string;
 
   @IsOptional()

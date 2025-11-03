@@ -11,6 +11,7 @@ import { UpdateLeadDto } from './dto/update-lead.dto';
 import { ProcessedLeadFilters } from './dto/get-leads.dto';
 import { ApiResponse } from '@helpers/api-response.helper';
 import { ProcessedPriorityLeadFilters } from './dto/get-priority-leads.dto';
+import { LeadWithOwnerDetails, LeadOwnerDetails, ZohoLeadDetails } from './dto/lead-response.dto';
 
 @Injectable()
 export class LeadService {
@@ -19,7 +20,73 @@ export class LeadService {
     private readonly logger: PinoLoggerService,
   ) {}
 
-  async create(createLeadDto: CreateLeadDto): Promise<ApiResponse<Lead>> {
+  /**
+   * Transform raw lead data to include structured lead owner and Zoho details
+   */
+  private transformLeadWithOwnerDetails(lead: any): LeadWithOwnerDetails {
+    const leadOwner: LeadOwnerDetails = {
+      id: lead.zoho_lead_owner_id || undefined,
+      name: lead.zoho_lead_owner || undefined,
+      first_name: lead.zoho_lead_owner_first_name || undefined,
+      last_name: lead.zoho_lead_owner_last_name || undefined,
+      phone: lead.zoho_lead_owner_phone || undefined,
+    };
+
+    const zohoLead: ZohoLeadDetails = {
+      id: lead.zoho_id || undefined,
+      first_name: lead.zoho_first_name || undefined,
+      last_name: lead.zoho_last_name || undefined,
+      mobile: lead.zoho_mobile || undefined,
+      email: lead.zoho_email || undefined,
+      status: lead.zoho_status || undefined,
+      lead_disposition: lead.zoho_lead_disposition || undefined,
+      lead_source: lead.zoho_lead_source || undefined,
+      country: lead.zoho_country || undefined,
+      state: lead.zoho_state || undefined,
+      city: lead.zoho_city || undefined,
+      street: lead.zoho_street || undefined,
+      description: lead.zoho_description || undefined,
+    };
+
+    // Remove individual Zoho fields from the response and add structured objects
+    const {
+      zoho_id,
+      zoho_lead_owner,
+      zoho_lead_owner_id,
+      zoho_lead_owner_first_name,
+      zoho_lead_owner_last_name,
+      zoho_lead_owner_phone,
+      zoho_first_name,
+      zoho_last_name,
+      zoho_mobile,
+      zoho_email,
+      zoho_status,
+      zoho_lead_disposition,
+      zoho_lead_source,
+      zoho_country,
+      zoho_state,
+      zoho_city,
+      zoho_street,
+      zoho_description,
+      ...cleanedLead
+    } = lead;
+
+    return {
+      ...cleanedLead,
+      // Convert null values to undefined for consistent API responses
+      first_name: cleanedLead.first_name || undefined,
+      last_name: cleanedLead.last_name || undefined,
+      email: cleanedLead.email || undefined,
+      phone_number: cleanedLead.phone_number || undefined,
+      source: cleanedLead.source || undefined,
+      status: cleanedLead.status || undefined,
+      next_follow_up: cleanedLead.next_follow_up || undefined,
+      lead_owner: leadOwner,
+      zoho_lead: zohoLead,
+    };
+  }
+
+  async create(createLeadDto: CreateLeadDto): Promise<ApiResponse<LeadWithOwnerDetails>> {
     const methodName = 'create';
     this.logger.log(
       JSON.stringify({
@@ -159,7 +226,7 @@ export class LeadService {
         methodName,
       );
 
-      return ApiResponse.success('Lead created successfully', lead, 201);
+      return ApiResponse.success('Lead created successfully', this.transformLeadWithOwnerDetails(lead), 201);
     } catch (error) {
       this.logger.error(
         JSON.stringify({
@@ -183,7 +250,7 @@ export class LeadService {
     filters: ProcessedLeadFilters,
     organisationSlug?: string,
   ): Promise<
-    ApiResponse<{ leads: Lead[]; total: number; page: number; limit: number }>
+    ApiResponse<{ leads: LeadWithOwnerDetails[]; total: number; page: number; limit: number }>
   > {
     const methodName = 'findAll';
     this.logger.log(
@@ -269,6 +336,28 @@ export class LeadService {
         };
       }
 
+      // Add Zoho filters
+      if (filters.zoho_status) {
+        whereCondition.zoho_status = {
+          contains: filters.zoho_status,
+          mode: 'insensitive',
+        };
+      }
+
+      if (filters.zoho_lead_owner) {
+        whereCondition.zoho_lead_owner = {
+          contains: filters.zoho_lead_owner,
+          mode: 'insensitive',
+        };
+      }
+
+      if (filters.zoho_lead_source) {
+        whereCondition.zoho_lead_source = {
+          contains: filters.zoho_lead_source,
+          mode: 'insensitive',
+        };
+      }
+
       const [leads, total] = await Promise.all([
         this.prisma.lead.findMany({
           where: whereCondition,
@@ -296,7 +385,7 @@ export class LeadService {
       );
 
       const response = {
-        leads,
+        leads: leads.map(lead => this.transformLeadWithOwnerDetails(lead)),
         total,
         page: filters.page,
         limit: filters.limit,
@@ -325,7 +414,7 @@ export class LeadService {
   async findAllLeads(
     filters: ProcessedLeadFilters,
   ): Promise<
-    ApiResponse<{ leads: Lead[]; total: number; page: number; limit: number }>
+    ApiResponse<{ leads: LeadWithOwnerDetails[]; total: number; page: number; limit: number }>
   > {
     const methodName = 'findAllLeads';
     this.logger.log(
@@ -411,6 +500,28 @@ export class LeadService {
         };
       }
 
+      // Add Zoho filters
+      if (filters.zoho_status) {
+        whereCondition.zoho_status = {
+          contains: filters.zoho_status,
+          mode: 'insensitive',
+        };
+      }
+
+      if (filters.zoho_lead_owner) {
+        whereCondition.zoho_lead_owner = {
+          contains: filters.zoho_lead_owner,
+          mode: 'insensitive',
+        };
+      }
+
+      if (filters.zoho_lead_source) {
+        whereCondition.zoho_lead_source = {
+          contains: filters.zoho_lead_source,
+          mode: 'insensitive',
+        };
+      }
+
       const [leads, total] = await Promise.all([
         this.prisma.lead.findMany({
           where: whereCondition,
@@ -438,7 +549,7 @@ export class LeadService {
       );
 
       const response = {
-        leads,
+        leads: leads.map(lead => this.transformLeadWithOwnerDetails(lead)),
         total,
         page: filters.page,
         limit: filters.limit,
@@ -461,7 +572,7 @@ export class LeadService {
   async getPriorityLeads(
     filters: ProcessedPriorityLeadFilters,
   ): Promise<
-    ApiResponse<{ leads: Lead[]; total: number; page: number; limit: number }>
+    ApiResponse<{ leads: LeadWithOwnerDetails[]; total: number; page: number; limit: number }>
   > {
     const methodName = 'getPriorityLeads';
     this.logger.log(
@@ -538,20 +649,23 @@ export class LeadService {
         this.prisma.lead.count({ where: whereCondition }),
       ]);
 
-      // Calculate urgency for each lead (how overdue they are)
-      const enrichedLeads = leads.map((lead) => ({
-        ...lead,
-        urgency_minutes: lead.next_follow_up
-          ? Math.floor(
-              (currentTime.getTime() -
-                new Date(lead.next_follow_up).getTime()) /
-                (1000 * 60),
-            )
-          : 0,
-        is_overdue: lead.next_follow_up
-          ? new Date(lead.next_follow_up) < currentTime
-          : false,
-      }));
+      // Calculate urgency for each lead (how overdue they are) and transform them
+      const enrichedLeads = leads.map((lead) => {
+        const transformedLead = this.transformLeadWithOwnerDetails(lead);
+        return {
+          ...transformedLead,
+          urgency_minutes: lead.next_follow_up
+            ? Math.floor(
+                (currentTime.getTime() -
+                  new Date(lead.next_follow_up).getTime()) /
+                  (1000 * 60),
+              )
+            : 0,
+          is_overdue: lead.next_follow_up
+            ? new Date(lead.next_follow_up) < currentTime
+            : false,
+        };
+      });
 
       this.logger.log(
         JSON.stringify({
@@ -650,7 +764,7 @@ export class LeadService {
   async findOne(
     id: number,
     organisationSlug?: string,
-  ): Promise<ApiResponse<Lead>> {
+  ): Promise<ApiResponse<LeadWithOwnerDetails>> {
     const methodName = 'findOne';
     this.logger.log(
       JSON.stringify({
@@ -710,7 +824,7 @@ export class LeadService {
         methodName,
       );
 
-      return ApiResponse.success('Lead retrieved successfully', lead);
+      return ApiResponse.success('Lead retrieved successfully', this.transformLeadWithOwnerDetails(lead));
     } catch (error) {
       this.logger.error(
         JSON.stringify({
@@ -730,7 +844,7 @@ export class LeadService {
   async findOneByIdOrPhone(
     idOrPhone: string,
     organisationSlug?: string,
-  ): Promise<ApiResponse<Lead>> {
+  ): Promise<ApiResponse<LeadWithOwnerDetails>> {
     const methodName = 'findOneByIdOrPhone';
     this.logger.log(
       JSON.stringify({
@@ -755,7 +869,7 @@ export class LeadService {
         methodName,
       );
 
-      return ApiResponse.success('Lead found successfully', lead);
+      return ApiResponse.success('Lead found successfully', this.transformLeadWithOwnerDetails(lead));
     } catch (error) {
       this.logger.error(
         JSON.stringify({
@@ -776,7 +890,7 @@ export class LeadService {
     idOrPhone: string,
     updateLeadDto: UpdateLeadDto,
     organisationSlug?: string,
-  ): Promise<ApiResponse<Lead>> {
+  ): Promise<ApiResponse<LeadWithOwnerDetails>> {
     const methodName = 'updateByIdOrPhone';
     this.logger.log(
       JSON.stringify({
@@ -986,7 +1100,7 @@ export class LeadService {
         methodName,
       );
 
-      return ApiResponse.success('Lead updated successfully', lead);
+      return ApiResponse.success('Lead updated successfully', this.transformLeadWithOwnerDetails(lead));
     } catch (error) {
       this.logger.error(
         JSON.stringify({
@@ -1010,7 +1124,7 @@ export class LeadService {
     id: number,
     updateLeadDto: UpdateLeadDto,
     organisationSlug?: string,
-  ): Promise<ApiResponse<Lead>> {
+  ): Promise<ApiResponse<LeadWithOwnerDetails>> {
     const methodName = 'update';
     this.logger.log(
       JSON.stringify({
@@ -1246,7 +1360,7 @@ export class LeadService {
         methodName,
       );
 
-      return ApiResponse.success('Lead updated successfully', lead);
+      return ApiResponse.success('Lead updated successfully', this.transformLeadWithOwnerDetails(lead));
     } catch (error) {
       this.logger.error(
         JSON.stringify({

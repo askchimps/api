@@ -54,6 +54,9 @@ export class LeadController {
         : undefined,
       hasFollowUp: query.hasFollowUp,
       in_process: query.in_process,
+      zoho_status: query.zoho_status,
+      zoho_lead_owner: query.zoho_lead_owner,
+      zoho_lead_source: query.zoho_lead_source,
     };
 
     return this.leadService.findAll(filters, query.organisation);
@@ -81,6 +84,9 @@ export class LeadController {
       hasFollowUp: query.hasFollowUp,
       in_process: query.in_process,
       organisationSlug: query.organisation,
+      zoho_status: query.zoho_status,
+      zoho_lead_owner: query.zoho_lead_owner,
+      zoho_lead_source: query.zoho_lead_source,
     };
 
     return this.leadService.findAllLeads(filters);
