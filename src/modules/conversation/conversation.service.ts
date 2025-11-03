@@ -218,20 +218,6 @@ export class ConversationService {
         }
       }
 
-      // Check if conversation name is unique within the organisation
-      const existingConversation = await this.prisma.conversation.findFirst({
-        where: {
-          name: createConversationDto.name,
-          organisation_id: organisation.id,
-        },
-      });
-
-      if (existingConversation) {
-        throw new BadRequestException(
-          'Conversation with this name already exists in the organisation',
-        );
-      }
-
       // Use a transaction to ensure data consistency
       const result = await this.prisma.$transaction(async (prisma) => {
         // Create the conversation
