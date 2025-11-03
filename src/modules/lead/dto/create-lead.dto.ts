@@ -64,6 +64,12 @@ export class CreateLeadDto {
   @Min(0)
   follow_ups?: number = 0;
 
+  @Transform(({ value }) => parseInt(value))
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  reschedule_count?: number = 0;
+
   @IsOptional()
   @IsDateString()
   next_follow_up?: string;

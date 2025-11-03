@@ -155,22 +155,23 @@ model Agent {
 }
 
 model Lead {
-  id              Int       @id @default(autoincrement())
-  organisation_id Int
-  first_name      String?
-  last_name       String?
-  email           String?
-  phone_number    String?   @unique
-  source          String?
-  status          String?
-  is_indian       Int       @default(0)
-  additional_info Json?
-  logs            Json?
-  follow_ups      Int       @default(0)
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @default(now()) @updatedAt
-  next_follow_up  DateTime?
-  in_process      Int       @default(0)
+  id               Int       @id @default(autoincrement())
+  organisation_id  Int
+  first_name       String?
+  last_name        String?
+  email            String?
+  phone_number     String?   @unique
+  source           String?
+  status           String?
+  is_indian        Int       @default(0)
+  additional_info  Json?
+  logs             Json?
+  follow_ups       Int       @default(0)
+  reschedule_count Int       @default(0)
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @default(now()) @updatedAt
+  next_follow_up   DateTime?
+  in_process       Int       @default(0)
 
   zoho_id                    String? @unique
   zoho_lead_owner            String?

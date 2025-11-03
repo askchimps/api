@@ -76,6 +76,23 @@ export class UpdateLeadDto {
   @Min(1)
   follow_ups_value?: number;
 
+  @Transform(({ value }) => parseInt(value))
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  reschedule_count?: number;
+
+  // New fields for reschedule_count operations
+  @IsOptional()
+  @IsIn(['increment', 'decrement'])
+  reschedule_count_operation?: 'increment' | 'decrement';
+
+  @Transform(({ value }) => parseInt(value))
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  reschedule_count_value?: number;
+
   @IsOptional()
   @IsDateString()
   next_follow_up?: string;

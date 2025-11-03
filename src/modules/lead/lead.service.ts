@@ -970,6 +970,8 @@ export class LeadService {
       const {
         follow_ups_operation,
         follow_ups_value,
+        reschedule_count_operation,
+        reschedule_count_value,
         agent_slug,
         remove_follow_up,
         ...updateDataWithoutSlug
@@ -1025,6 +1027,24 @@ export class LeadService {
         // Remove the operation fields from update data
         delete updateData.follow_ups_operation;
         delete updateData.follow_ups_value;
+      }
+
+      // Handle reschedule_count increment/decrement operations
+      if (reschedule_count_operation && reschedule_count_value) {
+        const currentRescheduleCount = existingLead.reschedule_count || 0;
+
+        if (reschedule_count_operation === 'increment') {
+          updateData.reschedule_count = currentRescheduleCount + reschedule_count_value;
+        } else if (reschedule_count_operation === 'decrement') {
+          updateData.reschedule_count = Math.max(
+            0,
+            currentRescheduleCount - reschedule_count_value,
+          ); // Ensure it doesn't go below 0
+        }
+
+        // Remove the operation fields from update data
+        delete updateData.reschedule_count_operation;
+        delete updateData.reschedule_count_value;
       }
 
       // Use transaction to handle lead update and agent connections
@@ -1229,6 +1249,8 @@ export class LeadService {
       const {
         follow_ups_operation,
         follow_ups_value,
+        reschedule_count_operation,
+        reschedule_count_value,
         agent_slug,
         remove_follow_up,
         ...updateDataWithoutSlug
@@ -1285,6 +1307,24 @@ export class LeadService {
         // Remove the operation fields from update data
         delete updateData.follow_ups_operation;
         delete updateData.follow_ups_value;
+      }
+
+      // Handle reschedule_count increment/decrement operations
+      if (reschedule_count_operation && reschedule_count_value) {
+        const currentRescheduleCount = existingLead.reschedule_count || 0;
+
+        if (reschedule_count_operation === 'increment') {
+          updateData.reschedule_count = currentRescheduleCount + reschedule_count_value;
+        } else if (reschedule_count_operation === 'decrement') {
+          updateData.reschedule_count = Math.max(
+            0,
+            currentRescheduleCount - reschedule_count_value,
+          ); // Ensure it doesn't go below 0
+        }
+
+        // Remove the operation fields from update data
+        delete updateData.reschedule_count_operation;
+        delete updateData.reschedule_count_value;
       }
 
       // Use transaction to handle lead update and agent connections
