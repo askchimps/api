@@ -23,7 +23,7 @@ export class OrganisationService {
     private readonly logger: PinoLoggerService,
     private readonly prisma: PrismaService,
     private readonly creditHistoryService: CreditHistoryService,
-  ) {}
+  ) { }
 
   async getAll(user: User) {
     const methodName = 'getAll';
@@ -1225,10 +1225,10 @@ export class OrganisationService {
         },
         ...(filters.type
           ? {
-              conversations: {
-                some: { type: filters.type },
-              },
-            }
+            conversations: {
+              some: { type: filters.type },
+            },
+          }
           : {}),
       };
 
@@ -1276,13 +1276,12 @@ export class OrganisationService {
                             AND c.created_at >= '${defaultStartDate.toISOString()}'
                             AND c.created_at <= '${defaultEndDate.toISOString()}'
                             ${!user.is_super_admin ? 'AND c.is_deleted = 0 AND c.is_disabled = 0' : ''}
-                            ${
-                              filters.agent_slug_or_id
-                                ? !isNaN(Number(filters.agent_slug_or_id))
-                                  ? `AND c.agent_id = ${Number(filters.agent_slug_or_id)}`
-                                  : `AND EXISTS (SELECT 1 FROM "Agent" a WHERE a.id = c.agent_id AND a.slug = '${filters.agent_slug_or_id}')`
-                                : ''
-                            }
+                            ${filters.agent_slug_or_id
+            ? !isNaN(Number(filters.agent_slug_or_id))
+              ? `AND c.agent_id = ${Number(filters.agent_slug_or_id)}`
+              : `AND EXISTS (SELECT 1 FROM "Agent" a WHERE a.id = c.agent_id AND a.slug = '${filters.agent_slug_or_id}')`
+            : ''
+          }
                             ${filters.source ? `AND c.source = '${filters.source}'` : ''}
                         GROUP BY c.id
                     ) subquery`,
@@ -1297,13 +1296,12 @@ export class OrganisationService {
                         AND c.created_at >= '${defaultStartDate.toISOString()}'
                         AND c.created_at <= '${defaultEndDate.toISOString()}'
                         ${!user.is_super_admin ? 'AND c.is_deleted = 0 AND c.is_disabled = 0' : ''}
-                        ${
-                          filters.agent_slug_or_id
-                            ? !isNaN(Number(filters.agent_slug_or_id))
-                              ? `AND c.agent_id = ${Number(filters.agent_slug_or_id)}`
-                              : `AND EXISTS (SELECT 1 FROM "Agent" a WHERE a.id = c.agent_id AND a.slug = '${filters.agent_slug_or_id}')`
-                            : ''
-                        }
+                        ${filters.agent_slug_or_id
+            ? !isNaN(Number(filters.agent_slug_or_id))
+              ? `AND c.agent_id = ${Number(filters.agent_slug_or_id)}`
+              : `AND EXISTS (SELECT 1 FROM "Agent" a WHERE a.id = c.agent_id AND a.slug = '${filters.agent_slug_or_id}')`
+            : ''
+          }
                         ${filters.source ? `AND c.source = '${filters.source}'` : ''}`,
         ),
         // Daily analytics breakdown
@@ -1329,13 +1327,12 @@ export class OrganisationService {
                         AND c.created_at <= '${defaultEndDate.toISOString()}'
                         ${!user.is_super_admin ? 'AND c.is_deleted = 0 AND c.is_disabled = 0' : ''}
                         ${filters.type ? `AND c.type = '${filters.type}'` : ''}
-                        ${
-                          filters.agent_slug_or_id
-                            ? !isNaN(Number(filters.agent_slug_or_id))
-                              ? `AND c.agent_id = ${Number(filters.agent_slug_or_id)}`
-                              : `AND EXISTS (SELECT 1 FROM "Agent" a WHERE a.id = c.agent_id AND a.slug = '${filters.agent_slug_or_id}')`
-                            : ''
-                        }
+                        ${filters.agent_slug_or_id
+            ? !isNaN(Number(filters.agent_slug_or_id))
+              ? `AND c.agent_id = ${Number(filters.agent_slug_or_id)}`
+              : `AND EXISTS (SELECT 1 FROM "Agent" a WHERE a.id = c.agent_id AND a.slug = '${filters.agent_slug_or_id}')`
+            : ''
+          }
                         ${filters.source ? `AND c.source = '${filters.source}'` : ''}
                     GROUP BY DATE(c.created_at)
                     ORDER BY date ASC`,
@@ -1555,12 +1552,12 @@ export class OrganisationService {
       const availableIndianChannels = Math.max(
         0,
         organisation.available_indian_channels -
-          organisation.active_indian_calls,
+        organisation.active_indian_calls,
       );
       const availableInternationalChannels = Math.max(
         0,
         organisation.available_international_channels -
-          organisation.active_international_calls,
+        organisation.active_international_calls,
       );
       const totalAvailableChannels =
         availableIndianChannels + availableInternationalChannels;
@@ -1618,7 +1615,7 @@ export class OrganisationService {
     this.logger.log(
       JSON.stringify({
         title: `${methodName} - start`,
-        data: { org_id_or_slug },
+        data: { org_id_or_slug, call_type, lead_id },
       }),
       methodName,
     );
@@ -1668,26 +1665,34 @@ export class OrganisationService {
         call_type === 'indian'
           ? 'active_indian_call_lead_ids'
           : 'active_international_call_lead_ids';
+
+      // Prepare update data - only include lead_id if it's provided and not null
+      const updateData: any = {
+        [updateField]: activeCallsForType + 1,
+      };
+
+      // Only update lead_id array if lead_id is provided and not null/empty
+      if (lead_id && lead_id.trim() !== '') {
+        updateData[leadIdField] = {
+          push: lead_id,
+        };
+      }
+
       const updatedOrganisation = await this.prisma.organisation.update({
         where: whereCondition,
-        data: {
-          [updateField]: activeCallsForType + 1,
-          [leadIdField]: {
-            push: lead_id,
-          },
-        },
+        data: updateData,
       });
 
       // Calculate available channels for response
       const availableIndianChannels = Math.max(
         0,
         updatedOrganisation.available_indian_channels -
-          (updatedOrganisation.active_indian_calls || 0),
+        (updatedOrganisation.active_indian_calls || 0),
       );
       const availableInternationalChannels = Math.max(
         0,
         updatedOrganisation.available_international_channels -
-          (updatedOrganisation.active_international_calls || 0),
+        (updatedOrganisation.active_international_calls || 0),
       );
       const totalRemainingChannels =
         availableIndianChannels + availableInternationalChannels;
@@ -1753,7 +1758,7 @@ export class OrganisationService {
     this.logger.log(
       JSON.stringify({
         title: `${methodName} - start`,
-        data: { org_id_or_slug },
+        data: { org_id_or_slug, call_type, lead_id },
       }),
       methodName,
     );
@@ -1798,27 +1803,34 @@ export class OrganisationService {
         call_type === 'indian'
           ? 'active_indian_call_lead_ids'
           : 'active_international_call_lead_ids';
+
+      // Prepare update data - only include lead_id filtering if it's provided and not null
+      const updateData: any = {
+        [updateField]: activeCallsForType - 1,
+      };
+
+      // Only update lead_id array if lead_id is provided and not null/empty
+      if (lead_id && lead_id.trim() !== '') {
+        updateData[leadIdField] = {
+          set: organisation[leadIdField]?.filter((id) => id !== lead_id) || [],
+        };
+      }
+
       const updatedOrganisation = await this.prisma.organisation.update({
         where: whereCondition,
-        data: {
-          [updateField]: activeCallsForType - 1,
-          [leadIdField]: {
-            set:
-              organisation[leadIdField]?.filter((id) => id !== lead_id) || [],
-          },
-        },
+        data: updateData,
       });
 
       // Calculate available channels for response
       const availableIndianChannels = Math.max(
         0,
         updatedOrganisation.available_indian_channels -
-          (updatedOrganisation.active_indian_calls || 0),
+        (updatedOrganisation.active_indian_calls || 0),
       );
       const availableInternationalChannels = Math.max(
         0,
         updatedOrganisation.available_international_channels -
-          (updatedOrganisation.active_international_calls || 0),
+        (updatedOrganisation.active_international_calls || 0),
       );
       const totalRemainingChannels =
         availableIndianChannels + availableInternationalChannels;
@@ -2115,7 +2127,7 @@ export class OrganisationService {
       // Log credit history
       await this.creditHistoryService.create({
         organisation_id: organisation.id,
-        change_amount: -amount,
+        change_amount: amount,
         change_type: 'decrement',
         change_field: field,
         prev_value: current,

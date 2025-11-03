@@ -77,6 +77,23 @@ model Organisation {
   payments           Payment[]
   costs              Cost[]
   credit_history     CreditHistory[]
+  test_calls         TestCall[]
+}
+
+model TestCall {
+  id              Int      @id @default(autoincrement())
+  organisation_id Int
+  first_name      String
+  last_name       String
+  phone_number    String
+  recording_url   String?  @db.Text
+  call_duration   Float?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @default(now()) @updatedAt
+  total_cost      Float?
+
+  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
+  costs        Cost[]
 }
 
 model UserOrganisation {
@@ -107,6 +124,7 @@ model Cost {
   id              Int       @id @default(autoincrement())
   organisation_id Int
   conversation_id Int?
+  test_call_id    Int?
   type            COST_TYPE
   amount          Float
   summary         String?
@@ -115,6 +133,7 @@ model Cost {
 
   organisation Organisation  @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
   conversation Conversation? @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  test_call    TestCall?     @relation(fields: [test_call_id], references: [id])
 }
 
 model CreditHistory {
