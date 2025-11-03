@@ -4,8 +4,26 @@ import {
   IsNumber,
   Min,
   IsUrl,
+  IsArray,
+  ValidateNested,
+  IsEnum,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
+import { COST_TYPE } from '@prisma/client';
+
+export class UpdateTestCallCostDto {
+  @IsEnum(COST_TYPE)
+  type: COST_TYPE;
+
+  @Transform(({ value }) => parseFloat(value))
+  @IsNumber()
+  @Min(0)
+  amount: number;
+
+  @IsOptional()
+  @IsString()
+  summary?: string;
+}
 
 export class UpdateTestCallDto {
   @IsOptional()
@@ -35,4 +53,10 @@ export class UpdateTestCallDto {
   @Min(0)
   @Type(() => Number)
   total_cost?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateTestCallCostDto)
+  costs?: UpdateTestCallCostDto[];
 }

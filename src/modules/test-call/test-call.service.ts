@@ -25,15 +25,16 @@ export class TestCallService {
     );
 
     try {
+      const { organisation: organisation_slug, costs, ...testCallData } = createTestCallDto;
+
       // Find organisation by ID or slug
-      const orgId = Number(createTestCallDto.organisation);
-      const orgSlug = createTestCallDto.organisation;
+      const orgId = Number(organisation_slug);
 
       const organisation = await this.prisma.organisation.findFirst({
         where: {
           OR: [
             { id: isNaN(orgId) ? undefined : orgId },
-            { slug: orgSlug }
+            { slug: organisation_slug }
           ],
           is_deleted: 0,
           is_disabled: 0,
@@ -44,45 +45,89 @@ export class TestCallService {
         throw new NotFoundException('Organisation not found');
       }
 
-      const testCall = await this.prisma.testCall.create({
-        data: {
-          organisation_id: organisation.id,
-          first_name: createTestCallDto.first_name,
-          last_name: createTestCallDto.last_name,
-          phone_number: createTestCallDto.phone_number,
-          recording_url: createTestCallDto.recording_url,
-          call_duration: createTestCallDto.call_duration,
-          total_cost: createTestCallDto.total_cost,
-        },
-        include: {
-          organisation: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
+      // Use Prisma transaction to create test call and costs together
+      const result = await this.prisma.$transaction(async (prisma) => {
+        // Create the test call first
+        const testCall = await prisma.testCall.create({
+          data: {
+            ...testCallData,
+            organisation_id: organisation.id,
+          },
+          include: {
+            organisation: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+              },
             },
           },
-          costs: {
-            select: {
-              id: true,
-              type: true,
-              amount: true,
-              summary: true,
-              created_at: true,
+        });
+
+        // Create all costs for the test call if provided
+        let createdCosts: any[] = [];
+        if (costs && costs.length > 0) {
+          createdCosts = await Promise.all(
+            costs.map((costData) =>
+              prisma.cost.create({
+                data: {
+                  ...costData,
+                  organisation_id: organisation.id,
+                  test_call_id: testCall.id,
+                },
+              }),
+            ),
+          );
+        }
+
+        // Calculate total cost from individual costs if not provided
+        let finalTotalCost = testCallData.total_cost;
+        if (!finalTotalCost && createdCosts.length > 0) {
+          finalTotalCost = createdCosts.reduce(
+            (sum, cost) => sum + cost.amount,
+            0,
+          );
+        }
+
+        // Update the test call with total cost if calculated from costs
+        const updatedTestCall = await prisma.testCall.update({
+          where: { id: testCall.id },
+          data: {
+            total_cost: finalTotalCost,
+          },
+          include: {
+            organisation: {
+              select: { id: true, name: true, slug: true },
+            },
+            costs: {
+              select: {
+                id: true,
+                type: true,
+                amount: true,
+                summary: true,
+                created_at: true,
+              },
+              orderBy: { created_at: 'desc' },
             },
           },
-        },
+        });
+
+        return updatedTestCall;
       });
 
       this.logger.log(
         JSON.stringify({
           title: `${methodName} - success`,
-          data: { testCallId: testCall.id },
+          data: { 
+            testCallId: result.id,
+            costCount: costs?.length || 0,
+            totalCost: result.total_cost,
+          },
         }),
         methodName,
       );
 
-      return ApiResponse.success('Test call created successfully', testCall);
+      return ApiResponse.success('Test call created successfully', result);
     } catch (error) {
       this.logger.error(
         JSON.stringify({
@@ -331,51 +376,104 @@ export class TestCallService {
       // Check if test call exists
       const existingTestCall = await this.prisma.testCall.findUnique({
         where: { id },
+        include: {
+          organisation: true,
+        },
       });
 
       if (!existingTestCall) {
         throw new NotFoundException('Test call not found');
       }
 
-      const updatedTestCall = await this.prisma.testCall.update({
-        where: { id },
-        data: {
-          first_name: updateTestCallDto.first_name,
-          last_name: updateTestCallDto.last_name,
-          phone_number: updateTestCallDto.phone_number,
-          recording_url: updateTestCallDto.recording_url,
-          call_duration: updateTestCallDto.call_duration,
-          total_cost: updateTestCallDto.total_cost,
-        },
-        include: {
-          organisation: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
+      const { costs, ...testCallData } = updateTestCallDto;
+
+      // Use Prisma transaction to update test call and costs together
+      const result = await this.prisma.$transaction(async (prisma) => {
+        // Update the test call
+        const updatedTestCall = await prisma.testCall.update({
+          where: { id },
+          data: testCallData,
+        });
+
+        // Handle costs if provided
+        let createdCosts: any[] = [];
+        if (costs !== undefined) {
+          // Delete existing costs for this test call
+          await prisma.cost.deleteMany({
+            where: { test_call_id: id },
+          });
+
+          // Create new costs if provided
+          if (costs.length > 0) {
+            createdCosts = await Promise.all(
+              costs.map((costData) =>
+                prisma.cost.create({
+                  data: {
+                    ...costData,
+                    organisation_id: existingTestCall.organisation_id,
+                    test_call_id: id,
+                  },
+                }),
+              ),
+            );
+          }
+
+          // Calculate total cost from individual costs if not explicitly provided
+          let finalTotalCost = testCallData.total_cost;
+          if (finalTotalCost === undefined && createdCosts.length > 0) {
+            finalTotalCost = createdCosts.reduce(
+              (sum, cost) => sum + cost.amount,
+              0,
+            );
+          }
+
+          // Update total cost if calculated from costs
+          if (finalTotalCost !== undefined && finalTotalCost !== updatedTestCall.total_cost) {
+            await prisma.testCall.update({
+              where: { id },
+              data: { total_cost: finalTotalCost },
+            });
+          }
+        }
+
+        // Return the final updated test call with all relationships
+        return await prisma.testCall.findUnique({
+          where: { id },
+          include: {
+            organisation: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+              },
+            },
+            costs: {
+              select: {
+                id: true,
+                type: true,
+                amount: true,
+                summary: true,
+                created_at: true,
+              },
+              orderBy: { created_at: 'desc' },
             },
           },
-          costs: {
-            select: {
-              id: true,
-              type: true,
-              amount: true,
-              summary: true,
-              created_at: true,
-            },
-          },
-        },
+        });
       });
 
       this.logger.log(
         JSON.stringify({
           title: `${methodName} - success`,
-          data: { testCallId: updatedTestCall.id },
+          data: { 
+            testCallId: result!.id,
+            costCount: costs?.length || 0,
+            totalCost: result!.total_cost,
+          },
         }),
         methodName,
       );
 
-      return ApiResponse.success('Test call updated successfully', updatedTestCall);
+      return ApiResponse.success('Test call updated successfully', result);
     } catch (error) {
       this.logger.error(
         JSON.stringify({
