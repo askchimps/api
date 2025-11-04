@@ -30,7 +30,7 @@ export class CreateLeadDto {
   zoho_id?: string;
 
   @IsOptional()
-  @IsEmail()
+  @IsString()
   email?: string;
 
   @IsOptional()
