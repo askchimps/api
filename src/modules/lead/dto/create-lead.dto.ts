@@ -115,7 +115,7 @@ export class CreateLeadDto {
   zoho_mobile?: string;
 
   @IsOptional()
-  @IsEmail()
+  @IsString()
   zoho_email?: string;
 
   @IsOptional()
