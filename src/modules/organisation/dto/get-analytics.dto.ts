@@ -38,6 +38,7 @@ export interface ConversationAnalytics {
   averageConversationLength: number; // Average number of messages per conversation
   averageCallLength: number; // Average call duration in minutes
   totalLeadsGenerated: number;
+  leadsWithFollowUp: number; // Count of leads that have a next_follow_up value
 }
 
 // Daily breakdown for analytics

@@ -190,6 +190,7 @@ export class OrganisationService {
         callCount,
         leadCount,
         qualifiedLeadCount,
+        leadsWithFollowUpCount,
         dailyConversations,
         dailyCalls,
       ] = await Promise.all([
@@ -230,6 +231,19 @@ export class OrganisationService {
           where: {
             organisation_id: organisation.id,
             status: 'qualified',
+            created_at: {
+              gte: defaultStartDate,
+              lte: defaultEndDate,
+            },
+          },
+        }),
+        // Leads with follow up count (leads that have next_follow_up value)
+        this.prisma.lead.count({
+          where: {
+            organisation_id: organisation.id,
+            next_follow_up: {
+              not: null,
+            },
             created_at: {
               gte: defaultStartDate,
               lte: defaultEndDate,
@@ -306,6 +320,7 @@ export class OrganisationService {
         callCount,
         leadCount,
         qualifiedLeadCount,
+        leadsWithFollowUpCount,
         dateRange: {
           startDate: defaultStartDate,
           endDate: defaultEndDate,
@@ -848,20 +863,44 @@ export class OrganisationService {
       const hasNextPage = page < totalPages;
       const hasPrevPage = page > 1;
 
-      // Hardcoded sources and status values
+      // Hardcoded sources and dynamic status values
       const sources = [
         { label: 'Zoho', value: 'zoho' },
         { label: 'Instagram', value: 'instagram' },
         { label: 'Whatsapp', value: 'whatsapp' },
       ];
 
-      const status = [
-        { label: 'New', value: 'new' },
-        { label: 'Follow Up', value: 'follow_up' },
-        { label: 'Reschedule', value: 'reschedule' },
-        { label: 'Qualified', value: 'qualified' },
-        { label: 'Not Qualified', value: 'not_qualified' },
-      ];
+      // Fetch unique status values from the database
+      const uniqueStatuses = await this.prisma.lead.findMany({
+        where: {
+          organisation_id: organisation.id,
+          status: {
+            not: null,
+          },
+        },
+        select: {
+          status: true,
+        },
+        distinct: ['status'],
+      });
+
+      // Transform status values to the expected format with proper labels
+      const status = uniqueStatuses
+        .filter(item => item.status && item.status.trim() !== '')
+        .map(item => {
+          const statusValue = item.status!;
+          // Convert snake_case or lowercase to proper label format
+          const label = statusValue
+            .split('_')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ');
+          
+          return {
+            label,
+            value: statusValue,
+          };
+        })
+        .sort((a, b) => a.label.localeCompare(b.label));
 
       const result = {
         leads,
@@ -1246,6 +1285,7 @@ export class OrganisationService {
         totalConversations,
         totalCalls,
         totalLeads,
+        leadsWithFollowUp,
         // Conversation analytics data
         conversationLengthData,
         callLengthData,
@@ -1263,6 +1303,15 @@ export class OrganisationService {
         // Count total leads generated
         this.prisma.lead.count({
           where: leadWhere,
+        }),
+        // Count leads with follow up (leads that have next_follow_up value)
+        this.prisma.lead.count({
+          where: {
+            ...leadWhere,
+            next_follow_up: {
+              not: null,
+            },
+          },
         }),
         // Average conversation length (messages per conversation)
         this.prisma.$queryRawUnsafe<Array<{ avg_length: number }>>(
@@ -1357,6 +1406,7 @@ export class OrganisationService {
             ? 0
             : Math.round(avgCallLength * 100) / 100,
         totalLeadsGenerated: totalLeads,
+        leadsWithFollowUp,
       };
 
       // Create daily analytics breakdown map for filling missing dates
