@@ -1600,6 +1600,7 @@ export class OrganisationService {
     org_id_or_slug: string,
     call_type: 'indian' | 'international',
     lead_id?: string,
+    amount: number = 1,
   ): Promise<
     ApiResponse<{
       active_indian_calls: number;
@@ -1615,7 +1616,7 @@ export class OrganisationService {
     this.logger.log(
       JSON.stringify({
         title: `${methodName} - start`,
-        data: { org_id_or_slug, call_type, lead_id },
+        data: { org_id_or_slug, call_type, lead_id, amount },
       }),
       methodName,
     );
@@ -1647,12 +1648,12 @@ export class OrganisationService {
 
       const activeCallsForType =
         call_type === 'indian'
-          ? organisation.active_indian_calls || 0
-          : organisation.active_international_calls || 0;
+          ? organisation.active_indian_calls
+          : organisation.active_international_calls;
 
-      if (activeCallsForType >= availableChannels) {
+      if (activeCallsForType + amount > availableChannels) {
         throw new BadRequestException(
-          `No available ${call_type} channels to increment active calls`,
+          `Not enough available ${call_type} channels to increment active calls by ${amount}. Available: ${availableChannels - activeCallsForType}, Requested: ${amount}`,
         );
       }
 
@@ -1666,15 +1667,31 @@ export class OrganisationService {
           ? 'active_indian_call_lead_ids'
           : 'active_international_call_lead_ids';
 
+      this.logger.log(
+        JSON.stringify({
+          title: `${methodName} - updating`,
+          data: {
+            updateField,
+            leadIdField,
+            activeCallsForType,
+            amount,
+            lead_id,
+          },
+        }),
+        methodName,
+      );
+
       // Prepare update data - only include lead_id if it's provided and not null
       const updateData: any = {
-        [updateField]: activeCallsForType + 1,
+        [updateField]: activeCallsForType + amount,
       };
 
       // Only update lead_id array if lead_id is provided and not null/empty
+      // For multiple increments with same lead_id, we add it multiple times
       if (lead_id && lead_id.trim() !== '') {
+        const leadIdsToAdd = Array(amount).fill(lead_id);
         updateData[leadIdField] = {
-          push: lead_id,
+          push: leadIdsToAdd,
         };
       }
 
@@ -1743,6 +1760,7 @@ export class OrganisationService {
     org_id_or_slug: string,
     call_type: 'indian' | 'international',
     lead_id?: string,
+    amount: number = 1,
   ): Promise<
     ApiResponse<{
       active_indian_calls: number;
@@ -1758,7 +1776,7 @@ export class OrganisationService {
     this.logger.log(
       JSON.stringify({
         title: `${methodName} - start`,
-        data: { org_id_or_slug, call_type, lead_id },
+        data: { org_id_or_slug, call_type, lead_id, amount },
       }),
       methodName,
     );
@@ -1788,9 +1806,9 @@ export class OrganisationService {
           ? organisation.active_indian_calls || 0
           : organisation.active_international_calls || 0;
 
-      if (activeCallsForType <= 0) {
+      if (activeCallsForType < amount) {
         throw new BadRequestException(
-          `No active ${call_type} calls to decrement`,
+          `Not enough active ${call_type} calls to decrement by ${amount}. Current active calls: ${activeCallsForType}, Requested decrement: ${amount}`,
         );
       }
 
@@ -1806,13 +1824,25 @@ export class OrganisationService {
 
       // Prepare update data - only include lead_id filtering if it's provided and not null
       const updateData: any = {
-        [updateField]: activeCallsForType - 1,
+        [updateField]: Math.max(0, activeCallsForType - amount),
       };
 
       // Only update lead_id array if lead_id is provided and not null/empty
+      // For multiple decrements with same lead_id, we remove multiple instances
       if (lead_id && lead_id.trim() !== '') {
+        const currentLeadIds = organisation[leadIdField] || [];
+        let remainingLeadIds = [...currentLeadIds];
+
+        // Remove the specified lead_id 'amount' times
+        for (let i = 0; i < amount; i++) {
+          const index = remainingLeadIds.indexOf(lead_id);
+          if (index > -1) {
+            remainingLeadIds.splice(index, 1);
+          }
+        }
+
         updateData[leadIdField] = {
-          set: organisation[leadIdField]?.filter((id) => id !== lead_id) || [],
+          set: remainingLeadIds,
         };
       }
 

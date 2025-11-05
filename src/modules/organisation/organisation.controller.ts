@@ -26,6 +26,7 @@ import {
   ProcessedAnalyticsFilters,
 } from './dto/get-analytics.dto';
 import { PatchCreditsDto } from './dto/patch-credits.dto';
+import { ManageCallsDto } from './dto/manage-calls.dto';
 
 @Controller({
   path: 'organisation',
@@ -205,12 +206,13 @@ export class OrganisationController {
   async incrementActiveCalls(
     @Param('org_id_or_slug') org_id_or_slug: string,
     @Param('call_type') call_type: 'indian' | 'international',
-    @Query('lead_id') lead_id?: string,
+    @Body() body: ManageCallsDto,
   ) {
     return this.organisationService.incrementActiveCalls(
       org_id_or_slug,
       call_type,
-      lead_id,
+      body.lead_id,
+      body.amount || 1,
     );
   }
 
@@ -219,12 +221,13 @@ export class OrganisationController {
   async decrementActiveCalls(
     @Param('org_id_or_slug') org_id_or_slug: string,
     @Param('call_type') call_type: 'indian' | 'international',
-    @Query('lead_id') lead_id?: string,
+    @Body() body: ManageCallsDto,
   ) {
     return this.organisationService.decrementActiveCalls(
       org_id_or_slug,
       call_type,
-      lead_id,
+      body.lead_id,
+      body.amount || 1,
     );
   }
 
