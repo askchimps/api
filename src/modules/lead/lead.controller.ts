@@ -1,158 +1,90 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  Query,
-  ParseIntPipe,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, UseGuards, Req, Param, Query, Body } from '@nestjs/common';
+import { HeaderAuthGuard } from '../../guards/header-auth.guard';
 import { LeadService } from './lead.service';
-import { CreateLeadDto } from './dto/create-lead.dto';
-import { UpdateLeadDto } from './dto/update-lead.dto';
-import { GetLeadsDto, ProcessedLeadFilters } from './dto/get-leads.dto';
-import {
-  GetPriorityLeadsDto,
-  ProcessedPriorityLeadFilters,
-} from './dto/get-priority-leads.dto';
-import { HeaderAuthGuard } from '@guards/header-auth.guard';
-import { Public } from '@decorators/public.decorator';
+import { 
+    CreateLeadDto, 
+    UpdateLeadDto, 
+    GetLeadsQueryDto, 
+    GetLeadCallsQueryDto, 
+    GetLeadChatsQueryDto, 
+    LeadParamDto 
+} from './dto';
 
-@UseGuards(HeaderAuthGuard)
 @Controller({
-  path: 'lead',
-  version: '1',
+    path: 'lead',
+    version: '1',
 })
+@UseGuards(HeaderAuthGuard)
 export class LeadController {
-  constructor(private readonly leadService: LeadService) {}
+    constructor(private readonly leadService: LeadService) { }
 
-  @Post()
-  async create(@Body() createLeadDto: CreateLeadDto) {
-    return this.leadService.create(createLeadDto);
-  }
+    @Get()
+    async getAllLeads(
+        @Query() query: GetLeadsQueryDto
+    ) {
+        return this.leadService.getAllLeads({
+            page: query.page || 1,
+            limit: query.limit || 1000,
+            status: query.status,
+            source: query.source,
+            is_indian: query.is_indian,
+            start_date: query.start_date,
+            end_date: query.end_date
+        });
+    }
 
-  @Get()
-  async findAll(@Query() query: GetLeadsDto) {
-    const filters: ProcessedLeadFilters = {
-      page: query.page || 1,
-      limit: query.limit || 10,
-      source: query.source,
-      status: query.status,
-      agent_slug_or_id: query.agent,
-      search: query.search,
-      startDate: query.startDate ? new Date(query.startDate) : undefined,
-      endDate: query.endDate ? new Date(query.endDate) : undefined,
-      is_indian: query.is_indian,
-      nextFollowUpStart: query.nextFollowUpStart
-        ? new Date(query.nextFollowUpStart)
-        : undefined,
-      nextFollowUpEnd: query.nextFollowUpEnd
-        ? new Date(query.nextFollowUpEnd)
-        : undefined,
-      hasFollowUp: query.hasFollowUp,
-      in_process: query.in_process,
-      zoho_status: query.zoho_status,
-      zoho_lead_owner: query.zoho_lead_owner,
-      zoho_lead_source: query.zoho_lead_source,
-    };
+    @Get(':id_or_phone')
+    async getLeadById(
+        @Param() params: LeadParamDto
+    ) {
+        return this.leadService.getOne(params.id_or_phone);
+    }
 
-    return this.leadService.findAll(filters, query.organisation);
-  }
+    @Post()
+    async createLead(
+        @Body() createLeadDto: CreateLeadDto
+    ) {
+        return this.leadService.createLead(createLeadDto);
+    }
 
-  @Get('all')
-  @Public()
-  async findAllLeads(@Query() query: GetLeadsDto) {
-    const filters: ProcessedLeadFilters = {
-      page: query.page || 1,
-      limit: query.limit || 10,
-      source: query.source,
-      status: query.status,
-      agent_slug_or_id: query.agent,
-      search: query.search,
-      startDate: query.startDate ? new Date(query.startDate) : undefined,
-      endDate: query.endDate ? new Date(query.endDate) : undefined,
-      is_indian: query.is_indian,
-      nextFollowUpStart: query.nextFollowUpStart
-        ? new Date(query.nextFollowUpStart)
-        : undefined,
-      nextFollowUpEnd: query.nextFollowUpEnd
-        ? new Date(query.nextFollowUpEnd)
-        : undefined,
-      hasFollowUp: query.hasFollowUp,
-      in_process: query.in_process,
-      organisationSlug: query.organisation,
-      zoho_status: query.zoho_status,
-      zoho_lead_owner: query.zoho_lead_owner,
-      zoho_lead_source: query.zoho_lead_source,
-    };
+    @Put(':id_or_phone')
+    async updateLead(
+        @Param() params: LeadParamDto,
+        @Body() updateLeadDto: UpdateLeadDto
+    ) {
+        return this.leadService.updateOne(params.id_or_phone, updateLeadDto);
+    }
 
-    return this.leadService.findAllLeads(filters);
-  }
+    @Delete(':id_or_phone')
+    async deleteLead(
+        @Param() params: LeadParamDto
+    ) {
+        return this.leadService.deleteOne(params.id_or_phone);
+    }
 
-  @Get('priority')
-  async getPriorityLeads(@Query() query: GetPriorityLeadsDto) {
-    const filters: ProcessedPriorityLeadFilters = {
-      page: query.page || 1,
-      limit: query.limit || 10,
-      organisation_slug: query.organisation,
-      nextFollowUpStart: query.nextFollowUpStart
-        ? new Date(query.nextFollowUpStart)
-        : undefined,
-      nextFollowUpEnd: query.nextFollowUpEnd
-        ? new Date(query.nextFollowUpEnd)
-        : undefined,
-      is_indian: query.is_indian,
-      in_process: query.in_process,
-    };
+    @Get(':id_or_phone/calls')
+    async getLeadCalls(
+        @Param() params: LeadParamDto,
+        @Query() query: GetLeadCallsQueryDto
+    ) {
+        return this.leadService.getCallsOne(params.id_or_phone, {
+            page: query.page || 1,
+            limit: query.limit || 1000,
+            status: query.status,
+            direction: query.direction
+        });
+    }
 
-    return this.leadService.getPriorityLeads(filters);
-  }
-
-  @Get(':id_or_phone')
-  async findOne(
-    @Param('id_or_phone') idOrPhone: string,
-    @Query('organisation') organisation?: string,
-  ) {
-    return this.leadService.findOneByIdOrPhone(idOrPhone, organisation);
-  }
-
-  @Patch(':id_or_phone')
-  async update(
-    @Param('id_or_phone') idOrPhone: string,
-    @Body() updateLeadDto: UpdateLeadDto,
-    @Query('organisation') organisation?: string,
-  ) {
-    return this.leadService.updateByIdOrPhone(
-      idOrPhone,
-      updateLeadDto,
-      organisation,
-    );
-  }
-
-  @Delete(':id_or_phone')
-  async remove(
-    @Param('id_or_phone') idOrPhone: string,
-    @Query('organisation') organisation?: string,
-  ) {
-    return this.leadService.removeByIdOrPhone(idOrPhone, organisation);
-  }
-
-  @Patch(':id_or_phone/mark-process')
-  async markInProcess(
-    @Param('id_or_phone') idOrPhone: string,
-    @Query('organisation') organisation?: string,
-  ) {
-    return this.leadService.markInProcessByIdOrPhone(idOrPhone, organisation);
-  }
-
-  @Patch(':id_or_phone/unmark-process')
-  async unmarkInProcess(
-    @Param('id_or_phone') idOrPhone: string,
-    @Query('organisation') organisation?: string,
-  ) {
-    return this.leadService.unmarkInProcessByIdOrPhone(idOrPhone, organisation);
-  }
+    @Get(':id_or_phone/chats')
+    async getLeadChats(
+        @Param() params: LeadParamDto,
+        @Query() query: GetLeadChatsQueryDto
+    ) {
+        return this.leadService.getChatsOne(params.id_or_phone, {
+            page: query.page || 1,
+            limit: query.limit || 1000,
+            status: query.status,
+            source: query.source
+        });
+    }
 }

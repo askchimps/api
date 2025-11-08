@@ -1,2436 +1,2229 @@
-import { PinoLoggerService } from '@modules/common/logger/pinoLogger.service';
-import { PrismaService } from '@modules/common/prisma/prisma.service';
-import { CreditHistoryService } from '@modules/credit-history/credit-history.service';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { PrismaService } from '../common/prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
-import { ApiResponse } from '@helpers/api-response.helper';
-import { CONVERSATION_TYPE, Prisma, User } from '@prisma/client';
-import { ProcessedConversationFilters } from './dto/get-conversations.dto';
-import { ProcessedLeadFilters } from './dto/get-leads.dto';
-import {
-  ProcessedAnalyticsFilters,
-  AnalyticsResponse,
-  ConversationAnalytics,
-  DailyAnalyticsBreakdown,
-} from './dto/get-analytics.dto';
+    PaginationParams,
+    ChatsFilterParams,
+    CallsFilterParams,
+    LeadsFilterParams
+} from './dto/service-interfaces';
+import { ChatWhereInput, CallWhereInput, LeadWhereInput } from './dto/prisma-types';
 
 @Injectable()
 export class OrganisationService {
-  constructor(
-    private readonly logger: PinoLoggerService,
-    private readonly prisma: PrismaService,
-    private readonly creditHistoryService: CreditHistoryService,
-  ) { }
-
-  async getAll(user: User) {
-    const methodName = 'getAll';
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - start`,
-        data: user,
-      }),
-      methodName,
-    );
-
-    const whereCondition: Prisma.OrganisationWhereInput = {};
-
-    if (!user.is_super_admin) {
-      whereCondition.is_deleted = 0;
-      whereCondition.is_disabled = 0;
-      whereCondition.user_organisations = {
-        some: {
-          user_id: user.id,
-        },
-      };
-    }
-
-    const organisations = await this.prisma.organisation.findMany({
-      where: whereCondition,
-    });
-
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - end`,
-        data: organisations,
-      }),
-      methodName,
-    );
-
-    return organisations;
-  }
-
-  async getOne(user: User, idOrSlug: string) {
-    const methodName = 'getOne';
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - start`,
-        data: { user, idOrSlug },
-      }),
-      methodName,
-    );
-
-    const id = Number(idOrSlug);
-    const slug = idOrSlug;
-
-    const whereCondition: Prisma.OrganisationWhereInput = {
-      OR: [{ id: isNaN(id) ? undefined : id }, { slug: slug }],
-    };
-
-    if (!user.is_super_admin) {
-      whereCondition.is_deleted = 0;
-      whereCondition.is_disabled = 0;
-    }
-
-    const organisation = await this.prisma.organisation.findFirst({
-      where: whereCondition,
-    });
-
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - end`,
-        data: organisation,
-      }),
-      methodName,
-    );
-
-    return organisation;
-  }
-
-  async getOverview(
-    user: User,
-    idOrSlug: string,
-    startDate?: Date,
-    endDate?: Date,
-  ) {
-    const methodName = 'getOverview';
-
-    try {
-      const now = new Date();
-
-      // Handle date range properly with timezone considerations
-      let defaultStartDate: Date;
-      let defaultEndDate: Date;
-
-      if (startDate) {
-        // If startDate is provided, set it to beginning of that day in UTC
-        defaultStartDate = new Date(startDate);
-        defaultStartDate.setUTCHours(0, 0, 0, 0);
-      } else {
-        // Default to first day of current month at 00:00:00 UTC
-        defaultStartDate = new Date(
-          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
-        );
-      }
-
-      if (endDate) {
-        // If endDate is provided, set it to end of that day in UTC
-        defaultEndDate = new Date(endDate);
-        defaultEndDate.setUTCHours(23, 59, 59, 999);
-      } else {
-        // Default to last day of current month at 23:59:59.999 UTC
-        defaultEndDate = new Date(
-          Date.UTC(
-            now.getUTCFullYear(),
-            now.getUTCMonth() + 1,
-            0,
-            23,
-            59,
-            59,
-            999,
-          ),
-        );
-      }
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - start`,
-          data: {
-            user,
-            idOrSlug,
-            startDate: defaultStartDate,
-            endDate: defaultEndDate,
-          },
-        }),
-        methodName,
-      );
-
-      const id = Number(idOrSlug);
-      const slug = idOrSlug;
-
-      const whereCondition: Prisma.OrganisationWhereInput = {
-        OR: [{ id: isNaN(id) ? undefined : id }, { slug: slug }],
-      };
-
-      if (!user.is_super_admin) {
-        whereCondition.is_deleted = 0;
-        whereCondition.is_disabled = 0;
-      }
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: whereCondition,
-      });
-
-      if (!organisation) {
-        throw new NotFoundException('Organisation not found');
-      }
-
-      // Generate complete date range array using UTC dates
-      const dateRange: string[] = [];
-      const currentDate = new Date(defaultStartDate);
-      while (currentDate <= defaultEndDate) {
-        dateRange.push(currentDate.toISOString().split('T')[0]);
-        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
-      }
-
-      const [
-        conversationCount,
-        callCount,
-        leadCount,
-        qualifiedLeadCount,
-        leadsWithFollowUpCount,
-        dailyConversations,
-        dailyCalls,
-      ] = await Promise.all([
-        // Total conversation count (conversations with type = 'CHAT')
-        this.prisma.conversation.count({
-          where: {
-            organisation_id: organisation.id,
-            type: CONVERSATION_TYPE.CHAT,
-            created_at: {
-              gte: defaultStartDate,
-              lte: defaultEndDate,
-            },
-          },
-        }),
-        // Total call count (conversations with type = 'CALL')
-        this.prisma.conversation.count({
-          where: {
-            organisation_id: organisation.id,
-            type: CONVERSATION_TYPE.CALL,
-            created_at: {
-              gte: defaultStartDate,
-              lte: defaultEndDate,
-            },
-          },
-        }),
-        // Total lead count
-        this.prisma.lead.count({
-          where: {
-            organisation_id: organisation.id,
-            created_at: {
-              gte: defaultStartDate,
-              lte: defaultEndDate,
-            },
-          },
-        }),
-        // Qualified leads count (status = 'qualified')
-        this.prisma.lead.count({
-          where: {
-            organisation_id: organisation.id,
-            status: 'qualified',
-            created_at: {
-              gte: defaultStartDate,
-              lte: defaultEndDate,
-            },
-          },
-        }),
-        // Leads with follow up count (leads that have next_follow_up value)
-        this.prisma.lead.count({
-          where: {
-            organisation_id: organisation.id,
-            next_follow_up: {
-              not: null,
-            },
-            created_at: {
-              gte: defaultStartDate,
-              lte: defaultEndDate,
-            },
-          },
-        }),
-        // Daily conversation breakdown using optimized query
-        this.prisma.$queryRaw<
-          Array<{
-            date: Date;
-            conversation_count: bigint;
-          }>
-        >`
-                SELECT 
-                    DATE(created_at) as date,
-                    COUNT(*) as conversation_count
-                FROM "Conversation"
-                WHERE 
-                    organisation_id = ${organisation.id}
-                    AND type = 'CHAT'
-                    AND created_at >= ${defaultStartDate}
-                    AND created_at <= ${defaultEndDate}
-                GROUP BY DATE(created_at)
-                ORDER BY date ASC
-                `,
-        // Daily call breakdown using optimized query
-        this.prisma.$queryRaw<
-          Array<{
-            date: Date;
-            call_count: bigint;
-          }>
-        >`
-                SELECT 
-                    DATE(created_at) as date,
-                    COUNT(*) as call_count
-                FROM "Conversation"
-                WHERE 
-                    organisation_id = ${organisation.id}
-                    AND type = 'CALL'
-                    AND created_at >= ${defaultStartDate}
-                    AND created_at <= ${defaultEndDate}
-                GROUP BY DATE(created_at)
-                ORDER BY date ASC
-                `,
-      ]);
-
-      // Create maps for daily data
-      const conversationMap = new Map<string, number>();
-      const callMap = new Map<string, number>();
-
-      dailyConversations.forEach((item) => {
-        const dateKey = item.date.toISOString().split('T')[0]; // Convert to YYYY-MM-DD format
-        conversationMap.set(dateKey, Number(item.conversation_count));
-      });
-
-      dailyCalls.forEach((item) => {
-        const dateKey = item.date.toISOString().split('T')[0]; // Convert to YYYY-MM-DD format
-        callMap.set(dateKey, Number(item.call_count));
-      });
-
-      // Create arrays with all dates in range, filling missing dates with 0
-      const conversationCountPerDay = dateRange.map((date) => ({
-        date,
-        count: conversationMap.get(date) || 0,
-      }));
-
-      const callCountPerDay = dateRange.map((date) => ({
-        date,
-        count: callMap.get(date) || 0,
-      }));
-
-      const result = {
-        conversationCount,
-        callCount,
-        leadCount,
-        qualifiedLeadCount,
-        leadsWithFollowUpCount,
-        dateRange: {
-          startDate: defaultStartDate,
-          endDate: defaultEndDate,
-        },
-        conversationCountPerDay,
-        callCountPerDay,
-      };
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - end`,
-          data: {
-            organisationId: organisation.id,
-            resultSize: JSON.stringify(result).length,
-          },
-        }),
-        methodName,
-      );
-
-      return result;
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error?.message || 'Unknown error',
-          stack: error?.stack,
-        }),
-        methodName,
-      );
-      throw error;
-    }
-  }
-
-  async getAllConversations(
-    user: User,
-    idOrSlug: string,
-    filters: ProcessedConversationFilters,
-  ) {
-    const methodName = 'getAllConversations';
-
-    try {
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - start`,
-          data: { user, idOrSlug, filters },
-        }),
-        methodName,
-      );
-
-      const id = Number(idOrSlug);
-      const slug = idOrSlug;
-
-      const whereCondition: Prisma.OrganisationWhereInput = {
-        OR: [{ id: isNaN(id) ? undefined : id }, { slug: slug }],
-      };
-
-      if (!user.is_super_admin) {
-        whereCondition.is_deleted = 0;
-        whereCondition.is_disabled = 0;
-      }
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: whereCondition,
-      });
-
-      if (!organisation) {
-        throw new NotFoundException('Organisation not found');
-      }
-
-      // Set default values for pagination
-      const page = filters.page ?? 1;
-      const limit = filters.limit ?? 10;
-
-      // Handle date range with proper timezone
-      let startDate: Date | undefined;
-      let endDate: Date | undefined;
-
-      if (filters.startDate) {
-        startDate = new Date(filters.startDate);
-        startDate.setUTCHours(0, 0, 0, 0);
-      }
-
-      if (filters.endDate) {
-        endDate = new Date(filters.endDate);
-        endDate.setUTCHours(23, 59, 59, 999);
-      }
-
-      // Build conversation filters
-      const conversationWhere: Prisma.ConversationWhereInput = {
-        organisation_id: organisation.id,
-      };
-
-      if (!user.is_super_admin) {
-        conversationWhere.is_deleted = 0;
-        conversationWhere.is_disabled = 0;
-      }
-
-      // Add date filters
-      if (startDate || endDate) {
-        conversationWhere.created_at = {};
-        if (startDate) conversationWhere.created_at.gte = startDate;
-        if (endDate) conversationWhere.created_at.lte = endDate;
-      }
-
-      // Add source filter
-      if (filters.source) {
-        conversationWhere.source = filters.source;
-      }
-
-      // Add agent filter
-      if (filters.agent_slug_or_id) {
-        const agentId = Number(filters.agent_slug_or_id);
-        conversationWhere.agent = {
-          OR: [
-            { id: isNaN(agentId) ? undefined : agentId },
-            { slug: filters.agent_slug_or_id },
-          ],
-        };
-      }
-
-      // Add type filter
-      if (filters.type) {
-        conversationWhere.type = filters.type;
-      }
-
-      // Calculate pagination
-      const skip = (page - 1) * limit;
-
-      // Get total count for pagination metadata
-      const totalCount = await this.prisma.conversation.count({
-        where: conversationWhere,
-      });
-
-      // Get conversations with optimized query including first 2 messages
-      const conversations = await this.prisma.conversation.findMany({
-        where: conversationWhere,
-        select: {
-          id: true,
-          name: true,
-          type: true,
-          source: true,
-          summary: true,
-          created_at: true,
-          updated_at: true,
-          agent: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-            },
-          },
-          messages: {
-            select: {
-              id: true,
-              role: true,
-              content: true,
-              created_at: true,
-            },
-            orderBy: {
-              created_at: 'asc',
-            },
-            take: 2, // Get only first 2 messages
-          },
-        },
-        orderBy: {
-          created_at: 'desc', // Latest conversations first
-        },
-        skip,
-        take: limit,
-      });
-
-      // Calculate pagination metadata
-      const totalPages = Math.ceil(totalCount / limit);
-      const hasNextPage = page < totalPages;
-      const hasPrevPage = page > 1;
-
-      const result = {
-        conversations,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount,
-          limit: limit,
-          hasNextPage,
-          hasPrevPage,
-        },
-        filters: {
-          source: filters.source,
-          agent: filters.agent_slug_or_id,
-          type: filters.type,
-          startDate: filters.startDate,
-          endDate: filters.endDate,
-        },
-      };
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - end`,
-          data: {
-            organisationId: organisation.id,
-            conversationCount: conversations.length,
-            totalCount,
-            page: page,
-          },
-        }),
-        methodName,
-      );
-
-      return result;
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error?.message || 'Unknown error',
-          stack: error?.stack,
-        }),
-        methodName,
-      );
-      throw error;
-    }
-  }
-
-  async getConversationDetails(
-    user: User,
-    idOrSlug: string,
-    conversationIdOrName: string,
-  ) {
-    const methodName = 'getConversationDetails';
-
-    try {
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - start`,
-          data: { user, idOrSlug, conversationIdOrName },
-        }),
-        methodName,
-      );
-
-      const id = Number(idOrSlug);
-      const slug = idOrSlug;
-
-      const whereCondition: Prisma.OrganisationWhereInput = {
-        OR: [{ id: isNaN(id) ? undefined : id }, { slug: slug }],
-      };
-
-      if (!user.is_super_admin) {
-        whereCondition.is_deleted = 0;
-        whereCondition.is_disabled = 0;
-      }
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: whereCondition,
-      });
-
-      if (!organisation) {
-        throw new NotFoundException('Organisation not found');
-      }
-
-      // Build conversation filters
-      const conversationId = Number(conversationIdOrName);
-      const conversationName = conversationIdOrName;
-
-      const conversationWhere: Prisma.ConversationWhereInput = {
-        organisation_id: organisation.id,
-        OR: [
-          { id: isNaN(conversationId) ? undefined : conversationId },
-          { name: conversationName },
-        ],
-      };
-
-      if (!user.is_super_admin) {
-        conversationWhere.is_deleted = 0;
-        conversationWhere.is_disabled = 0;
-      }
-
-      // Get conversation with all related details
-      const conversation = await this.prisma.conversation.findFirst({
-        where: conversationWhere,
-        include: {
-          agent: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              phone_number: true,
-              image_url: true,
-              base_prompt: true,
-              initial_prompt: true,
-              analysis_prompt: true,
-            },
-          },
-          lead: {
-            select: {
-              id: true,
-              first_name: true,
-              last_name: true,
-              email: true,
-              phone_number: true,
-              source: true,
-              status: true,
-              additional_info: true,
-              follow_ups: true,
-              created_at: true,
-              updated_at: true,
-            },
-          },
-          messages: {
-            select: {
-              id: true,
-              role: true,
-              content: true,
-              prompt_tokens: true,
-              completion_tokens: true,
-              created_at: true,
-              updated_at: true,
-            },
-            orderBy: {
-              created_at: 'asc', // Messages in chronological order
-            },
-          },
-          topics: {
-            select: {
-              id: true,
-              name: true,
-              description: true,
-              created_at: true,
-              updated_at: true,
-            },
-            where: {
-              is_deleted: 0,
-              is_disabled: 0,
-            },
-          },
-        },
-      });
-
-      if (!conversation) {
-        throw new NotFoundException('Conversation not found');
-      }
-
-      // Organize messages by role for statistics
-      const messageStats = {
-        total: conversation.messages.length,
-        userMessages: conversation.messages.filter((m) => m.role === 'user')
-          .length,
-        assistantMessages: conversation.messages.filter(
-          (m) => m.role === 'assistant',
-        ).length,
-      };
-
-      const result = {
-        conversation: {
-          ...conversation,
-          messageStats,
-        },
-      };
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - end`,
-          data: {
-            organisationId: organisation.id,
-            conversationId: conversation.id,
-            messageCount: conversation.messages.length,
-          },
-        }),
-        methodName,
-      );
-
-      return result;
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error?.message || 'Unknown error',
-          stack: error?.stack,
-        }),
-        methodName,
-      );
-      throw error;
-    }
-  }
-
-  async getAllLeads(
-    user: User,
-    idOrSlug: string,
-    filters: ProcessedLeadFilters,
-  ) {
-    const methodName = 'getAllLeads';
-
-    try {
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - start`,
-          data: { user, idOrSlug, filters },
-        }),
-        methodName,
-      );
-
-      const id = Number(idOrSlug);
-      const slug = idOrSlug;
-
-      const whereCondition: Prisma.OrganisationWhereInput = {
-        OR: [{ id: isNaN(id) ? undefined : id }, { slug: slug }],
-      };
-
-      if (!user.is_super_admin) {
-        whereCondition.is_deleted = 0;
-        whereCondition.is_disabled = 0;
-      }
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: whereCondition,
-      });
-
-      if (!organisation) {
-        throw new NotFoundException('Organisation not found');
-      }
-
-      // Set default values for pagination
-      const page = filters.page ?? 1;
-      const limit = filters.limit ?? 10;
-
-      // Handle date range with proper timezone
-      let startDate: Date | undefined;
-      let endDate: Date | undefined;
-
-      if (filters.startDate) {
-        startDate = new Date(filters.startDate);
-        startDate.setUTCHours(0, 0, 0, 0);
-      }
-
-      if (filters.endDate) {
-        endDate = new Date(filters.endDate);
-        endDate.setUTCHours(23, 59, 59, 999);
-      }
-
-      // Build lead filters
-      const leadWhere: Prisma.LeadWhereInput = {
-        organisation_id: organisation.id,
-      };
-
-      // Add date filters
-      if (startDate || endDate) {
-        leadWhere.created_at = {};
-        if (startDate) leadWhere.created_at.gte = startDate;
-        if (endDate) leadWhere.created_at.lte = endDate;
-      }
-
-      // Add source filter (case insensitive)
-      if (filters.source) {
-        leadWhere.source = {
-          equals: filters.source,
-          mode: 'insensitive',
-        };
-      }
-
-      // Add status filter (case insensitive)
-      if (filters.status) {
-        leadWhere.status = {
-          equals: filters.status,
-          mode: 'insensitive',
-        };
-      }
-
-      // Add search filter (search in first_name, last_name, email, phone_number)
-      if (filters.search) {
-        leadWhere.OR = [
-          { first_name: { contains: filters.search, mode: 'insensitive' } },
-          { last_name: { contains: filters.search, mode: 'insensitive' } },
-          { email: { contains: filters.search, mode: 'insensitive' } },
-          { phone_number: { contains: filters.search, mode: 'insensitive' } },
-        ];
-      }
-
-      // Add agent filter - leads connected through many-to-many relationship
-      if (filters.agent_slug_or_id) {
-        const agentId = Number(filters.agent_slug_or_id);
-        leadWhere.agents = {
-          some: {
-            OR: [
-              { id: isNaN(agentId) ? undefined : agentId },
-              { slug: filters.agent_slug_or_id },
-            ],
-          },
-        };
-      }
-
-      // Calculate pagination
-      const skip = (page - 1) * limit;
-
-      // Get total count for pagination metadata
-      const totalCount = await this.prisma.lead.count({
-        where: leadWhere,
-      });
-
-      // Get leads with related data
-      const leads = await this.prisma.lead.findMany({
-        where: leadWhere,
-        select: {
-          id: true,
-          first_name: true,
-          last_name: true,
-          email: true,
-          phone_number: true,
-          source: true,
-          status: true,
-          additional_info: true,
-          follow_ups: true,
-          created_at: true,
-          updated_at: true,
-          agents: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-            },
-          },
-          conversations: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              created_at: true,
-            },
-            orderBy: {
-              created_at: 'desc',
-            },
-          },
-        },
-        orderBy: {
-          created_at: 'desc', // Latest leads first
-        },
-        skip,
-        take: limit,
-      });
-
-      // Calculate pagination metadata
-      const totalPages = Math.ceil(totalCount / limit);
-      const hasNextPage = page < totalPages;
-      const hasPrevPage = page > 1;
-
-      // Hardcoded sources and dynamic status values
-      const sources = [
-        { label: 'Zoho', value: 'zoho' },
-        { label: 'Instagram', value: 'instagram' },
-        { label: 'Whatsapp', value: 'whatsapp' },
-      ];
-
-      // Fetch unique status values from the database
-      const uniqueStatuses = await this.prisma.lead.findMany({
-        where: {
-          organisation_id: organisation.id,
-          status: {
-            not: null,
-          },
-        },
-        select: {
-          status: true,
-        },
-        distinct: ['status'],
-      });
-
-      // Transform status values to the expected format with proper labels
-      const status = uniqueStatuses
-        .filter(item => item.status && item.status.trim() !== '')
-        .map(item => {
-          const statusValue = item.status!;
-          // Convert snake_case or lowercase to proper label format
-          const label = statusValue
-            .split('_')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-            .join(' ');
-          
-          return {
-            label,
-            value: statusValue,
-          };
-        })
-        .sort((a, b) => a.label.localeCompare(b.label));
-
-      const result = {
-        leads,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount,
-          limit: limit,
-          hasNextPage,
-          hasPrevPage,
-        },
-        filters: {
-          source: filters.source,
-          status: filters.status,
-          agent: filters.agent_slug_or_id,
-          search: filters.search,
-          startDate: filters.startDate,
-          endDate: filters.endDate,
-        },
-        sources,
-        status,
-      };
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - end`,
-          data: {
-            organisationId: organisation.id,
-            leadCount: leads.length,
-            totalCount,
-            page: page,
-          },
-        }),
-        methodName,
-      );
-
-      return result;
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error?.message || 'Unknown error',
-          stack: error?.stack,
-        }),
-        methodName,
-      );
-      throw error;
-    }
-  }
-
-  async getLeadDetails(user: User, idOrSlug: string, leadId: string) {
-    const methodName = 'getLeadDetails';
-
-    try {
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - start`,
-          data: { user, idOrSlug, leadId },
-        }),
-        methodName,
-      );
-
-      // First, find the organisation
-      const orgId = Number(idOrSlug);
-      const orgSlug = idOrSlug;
-
-      const orgWhereCondition: Prisma.OrganisationWhereInput = {
-        OR: [{ id: isNaN(orgId) ? undefined : orgId }, { slug: orgSlug }],
-      };
-
-      if (!user.is_super_admin) {
-        orgWhereCondition.is_deleted = 0;
-        orgWhereCondition.is_disabled = 0;
-      }
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: orgWhereCondition,
-      });
-
-      if (!organisation) {
-        throw new NotFoundException('Organisation not found');
-      }
-
-      // Convert leadId to number
-      const numericLeadId = Number(leadId);
-      if (isNaN(numericLeadId)) {
-        throw new BadRequestException('Invalid lead ID');
-      }
-
-      // Get lead with all related data
-      const lead = await this.prisma.lead.findFirst({
-        where: {
-          id: numericLeadId,
-          organisation_id: organisation.id,
-        },
-        include: {
-          agents: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              base_prompt: true,
-              image_url: true,
-            },
-          },
-          conversations: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              source: true,
-              summary: true,
-              analysis: true,
-              recording_url: true,
-              duration: true,
-              prompt_tokens: true,
-              completion_tokens: true,
-              created_at: true,
-              updated_at: true,
-              messages: {
+    private readonly logger = new Logger(OrganisationService.name);
+
+    constructor(private readonly prisma: PrismaService) { }
+
+    async getAllOrganisations(isSuperAdmin: boolean = false, userId?: string) {
+        this.logger.log(`Getting all organisations - isSuperAdmin: ${isSuperAdmin}, userId: ${userId}`);
+
+        try {
+            let whereCondition: any;
+
+            if (isSuperAdmin) {
+                // Super admin can see all organisations
+                whereCondition = {};
+            } else if (userId) {
+                // Regular user can only see organisations they belong to
+                whereCondition = {
+                    is_deleted: 0,
+                    is_disabled: 0,
+                    user_organisations: {
+                        some: {
+                            user_id: userId,
+                            is_deleted: 0
+                        }
+                    }
+                };
+            } else {
+                // No user ID provided, return empty result
+                return [];
+            }
+
+            const organisations = await this.prisma.organisation.findMany({
+                where: whereCondition,
                 select: {
-                  id: true,
-                  content: true,
-                  role: true,
-                  created_at: true,
+                    id: true,
+                    name: true,
+                    slug: true,
+                    chat_credits: true,
+                    call_credits: true,
+                    is_disabled: true,
+                    is_deleted: true,
+                    created_at: true,
+                    updated_at: true,
                 },
                 orderBy: {
-                  created_at: 'desc',
+                    created_at: 'desc',
                 },
-                take: 5, // Get last 5 messages from each conversation
-              },
+            });
+
+            this.logger.log(`Successfully retrieved ${organisations.length} organisations`);
+            return organisations;
+
+        } catch (error) {
+            this.logger.error(`Error in getAllOrganisations: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    async getOrganisationDetails(
+        id_or_slug: string,
+    ) {
+        this.logger.log(`Getting organisation details for: ${id_or_slug}`);
+
+        try {
+            // Find organisation by id or slug
+            this.logger.log(`Searching organisation by ID or slug: ${id_or_slug}`);
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    OR: [
+                        { id: isNaN(parseInt(id_or_slug)) ? undefined : parseInt(id_or_slug) },
+                        { slug: id_or_slug }
+                    ],
+                    is_deleted: 0,
+                    is_disabled: 0
+                },
+                include: {
+                    user_organisations: {
+                        include: {
+                            user: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    email: true,
+                                    is_super_admin: true,
+                                    created_at: true
+                                }
+                            }
+                        }
+                    },
+                    agents: {
+                        where: {
+                            is_deleted: 0
+                        },
+                        select: {
+                            id: true,
+                            name: true,
+                            slug: true,
+                            type: true,
+                            image_url: true,
+                            is_disabled: true,
+                            created_at: true,
+                            updated_at: true
+                        }
+                    },
+                    credit_history: {
+                        orderBy: {
+                            created_at: 'desc'
+                        },
+                        take: 10,
+                        select: {
+                            id: true,
+                            change_amount: true,
+                            change_type: true,
+                            change_field: true,
+                            reason: true,
+                            created_at: true
+                        }
+                    }
+                }
+            });
+
+            if (!organisation) {
+                this.logger.error(`Organisation not found for identifier: ${id_or_slug}`);
+                throw new NotFoundException('Organisation not found');
+            }
+
+            this.logger.log(`Found organisation: ${organisation.name} (ID: ${organisation.id})`);
+
+            // Get comprehensive statistics
+            const orgId = organisation.id;
+            this.logger.log(`Starting statistics calculation for organisation ${orgId}`);
+            const now = new Date();
+            const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+
+            // Get total counts
+            const totalLeads = await this.prisma.lead.count({
+                where: {
+                    organisations: {
+                        some: {
+                            id: orgId
+                        }
+                    },
+                    is_deleted: 0
+                }
+            });
+
+            const totalCalls = await this.prisma.call.count({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0
+                }
+            });
+
+            const totalChats = await this.prisma.chat.count({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0
+                }
+            });
+
+            // Get recent activity (last 30 days)
+            const recentLeads = await this.prisma.lead.count({
+                where: {
+                    organisations: {
+                        some: {
+                            id: orgId
+                        }
+                    },
+                    is_deleted: 0,
+                    created_at: {
+                        gte: thirtyDaysAgo
+                    }
+                }
+            });
+
+            const recentCalls = await this.prisma.call.count({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                    started_at: {
+                        gte: thirtyDaysAgo
+                    }
+                }
+            });
+
+            const recentChats = await this.prisma.chat.count({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                    created_at: {
+                        gte: thirtyDaysAgo
+                    }
+                }
+            });
+
+            // Get status-based counts
+            const qualifiedLeads = await this.prisma.lead.count({
+                where: {
+                    organisations: {
+                        some: {
+                            id: orgId
+                        }
+                    },
+                    is_deleted: 0,
+                    status: 'qualified'
+                }
+            });
+
+            const activeCalls = await this.prisma.call.count({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                    status: 'active'
+                }
+            });
+
+            const activeChats = await this.prisma.chat.count({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                    status: 'active'
+                }
+            });
+
+            // Calculate total costs
+            const totalCosts = await this.prisma.cost.aggregate({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0
+                },
+                _sum: {
+                    amount: true
+                }
+            });
+
+            // Get latest activities
+            const latestCalls = await this.prisma.call.findMany({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0
+                },
+                include: {
+                    lead: {
+                        select: {
+                            id: true,
+                            first_name: true,
+                            last_name: true,
+                            phone_number: true
+                        }
+                    },
+                    agent: {
+                        select: {
+                            id: true,
+                            name: true
+                        }
+                    }
+                },
+                orderBy: {
+                    started_at: 'desc'
+                },
+                take: 5
+            });
+
+            const latestChats = await this.prisma.chat.findMany({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0
+                },
+                include: {
+                    lead: {
+                        select: {
+                            id: true,
+                            first_name: true,
+                            last_name: true,
+                            phone_number: true
+                        }
+                    },
+                    agent: {
+                        select: {
+                            id: true,
+                            name: true
+                        }
+                    }
+                },
+                orderBy: {
+                    created_at: 'desc'
+                },
+                take: 5
+            });
+
+            const latestLeads = await this.prisma.lead.findMany({
+                where: {
+                    organisations: {
+                        some: {
+                            id: orgId
+                        }
+                    },
+                    is_deleted: 0
+                },
+                include: {
+                    zoho_lead: {
+                        select: {
+                            first_name: true,
+                            last_name: true,
+                            email: true,
+                            phone: true,
+                            status: true
+                        }
+                    }
+                },
+                orderBy: {
+                    created_at: 'desc'
+                },
+                take: 5
+            });
+
+            const organisationDetails = {
+                // Basic organisation info
+                id: organisation.id,
+                name: organisation.name,
+                slug: organisation.slug,
+                chat_credits: organisation.chat_credits,
+                call_credits: organisation.call_credits,
+                expenses: organisation.expenses,
+                active_indian_calls: organisation.active_indian_calls,
+                active_international_calls: organisation.active_international_calls,
+                available_indian_channels: organisation.available_indian_channels,
+                available_international_channels: organisation.available_international_channels,
+                is_disabled: organisation.is_disabled,
+                is_deleted: organisation.is_deleted,
+                created_at: organisation.created_at,
+                updated_at: organisation.updated_at,
+                updated_by_user: organisation.updated_by_user,
+
+                // Related data
+                users: organisation.user_organisations.map(uo => uo.user),
+                agents: organisation.agents,
+                recent_credit_history: organisation.credit_history,
+
+                // Statistics
+                stats: {
+                    // Total counts
+                    total_leads: totalLeads,
+                    total_calls: totalCalls,
+                    total_chats: totalChats,
+                    total_agents: organisation.agents.length,
+                    total_users: organisation.user_organisations.length,
+
+                    // Recent activity (last 30 days)
+                    recent_leads: recentLeads,
+                    recent_calls: recentCalls,
+                    recent_chats: recentChats,
+
+                    // Status-based counts
+                    qualified_leads: qualifiedLeads,
+                    active_calls: activeCalls,
+                    active_chats: activeChats,
+
+                    // Financial
+                    total_costs: totalCosts._sum.amount || 0,
+                    credit_balance: organisation.chat_credits + organisation.call_credits
+                },
+
+                // Latest activities
+                latest_activities: {
+                    calls: latestCalls.map(call => ({
+                        id: call.id,
+                        status: call.status,
+                        direction: call.direction,
+                        duration: call.duration,
+                        started_at: call.started_at,
+                        ended_at: call.ended_at,
+                        lead: call.lead ? {
+                            id: call.lead.id,
+                            name: `${call.lead.first_name || ''} ${call.lead.last_name || ''}`.trim(),
+                            phone_number: call.lead.phone_number
+                        } : null,
+                        agent: {
+                            id: call.agent.id,
+                            name: call.agent.name
+                        }
+                    })),
+                    chats: latestChats.map(chat => ({
+                        id: chat.id,
+                        status: chat.status,
+                        source: chat.source,
+                        prompt_tokens: chat.prompt_tokens,
+                        completion_tokens: chat.completion_tokens,
+                        total_cost: chat.total_cost,
+                        created_at: chat.created_at,
+                        updated_at: chat.updated_at,
+                        lead: chat.lead ? {
+                            id: chat.lead.id,
+                            name: `${chat.lead.first_name || ''} ${chat.lead.last_name || ''}`.trim(),
+                            phone_number: chat.lead.phone_number
+                        } : null,
+                        agent: {
+                            id: chat.agent.id,
+                            name: chat.agent.name
+                        }
+                    })),
+                    leads: latestLeads.map(lead => ({
+                        id: lead.id,
+                        first_name: lead.first_name,
+                        last_name: lead.last_name,
+                        full_name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
+                        email: lead.email,
+                        phone_number: lead.phone_number,
+                        source: lead.source,
+                        status: lead.status,
+                        is_indian: lead.is_indian,
+                        follow_up_count: lead.follow_up_count,
+                        created_at: lead.created_at,
+                        zoho_lead: lead.zoho_lead
+                    }))
+                }
+            };
+
+            this.logger.log(`Successfully retrieved organisation details for: ${id_or_slug}`);
+            return organisationDetails;
+
+        } catch (error) {
+            this.logger.error(`Error in getOrganisationDetails for ${id_or_slug}: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    async getOrganisationAgents(
+        id_or_slug: string,
+        filters: PaginationParams,
+        isSuperAdmin: boolean = false
+    ) {
+        this.logger.log(`Getting organisation agents for: ${id_or_slug}, filters: ${JSON.stringify(filters)}, isSuperAdmin: ${isSuperAdmin}`);
+
+        try {
+            const { page = 1, limit = 1000 } = filters;
+
+            // Find organisation by id or slug
+            this.logger.log(`Searching for organisation: ${id_or_slug}`);
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    OR: [
+                        { id: isNaN(parseInt(id_or_slug)) ? undefined : parseInt(id_or_slug) },
+                        { slug: id_or_slug }
+                    ],
+                    ...(isSuperAdmin ? {} : { is_deleted: 0, is_disabled: 0 })
+                }
+            });
+
+            if (!organisation) {
+                this.logger.error(`Organisation not found for identifier: ${id_or_slug}`);
+                throw new NotFoundException('Organisation not found');
+            }
+
+            this.logger.log(`Found organisation: ${organisation.name} (ID: ${organisation.id})`);
+
+            const orgId = organisation.id;
+            this.logger.log(`Getting agents for organisation ${orgId} with pagination: page=${page}, limit=${limit}`);
+
+            // Build where condition for agents
+            const whereCondition = {
+                organisation_id: orgId,
+                is_deleted: 0
+            };
+
+            // Get total count
+            this.logger.log(`Getting total agent count for organisation ${orgId}`);
+            const total = await this.prisma.agent.count({
+                where: whereCondition
+            });
+
+            this.logger.log(`Total agents found: ${total}`);
+
+            // Get agents with all details
+            this.logger.log(`Fetching agents with pagination: skip=${(page - 1) * limit}, take=${limit}`);
+            const agents = await this.prisma.agent.findMany({
+                where: whereCondition,
+                select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                    phone_number: true,
+                    organisation_id: true,
+                    base_prompt: true,
+                    image_url: true,
+                    type: true,
+                    assistant_id: true,
+                    initial_prompt: true,
+                    analysis_prompt: true,
+                    is_disabled: true,
+                    is_deleted: true,
+                    created_at: true,
+                    updated_at: true,
+                    updated_by_user: true
+                },
+                orderBy: {
+                    created_at: 'desc'
+                },
+                skip: (page - 1) * limit,
+                take: limit
+            });
+
+            this.logger.log(`Retrieved ${agents.length} agents from database`);
+
+            // Get agent statistics
+            this.logger.log(`Calculating agent statistics for organisation ${orgId}`);
+            const activeAgents = await this.prisma.agent.count({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                    is_disabled: 0
+                }
+            });
+
+            const disabledAgents = await this.prisma.agent.count({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                    is_disabled: 1
+                }
+            });
+
+            const callAgents = await this.prisma.agent.count({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                    type: 'CALL'
+                }
+            });
+
+            const chatAgents = await this.prisma.agent.count({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                    type: 'CHAT'
+                }
+            });
+
+            const result = {
+                agents: agents.map(agent => ({
+                    id: agent.id,
+                    name: agent.name,
+                    slug: agent.slug,
+                    phone_number: agent.phone_number,
+                    organisation_id: agent.organisation_id,
+                    base_prompt: agent.base_prompt,
+                    image_url: agent.image_url,
+                    type: agent.type,
+                    assistant_id: agent.assistant_id,
+                    initial_prompt: agent.initial_prompt,
+                    analysis_prompt: agent.analysis_prompt,
+                    is_disabled: agent.is_disabled,
+                    is_deleted: agent.is_deleted,
+                    created_at: agent.created_at,
+                    updated_at: agent.updated_at,
+                    updated_by_user: agent.updated_by_user,
+                    status: agent.is_disabled === 1 ? 'disabled' : 'active'
+                })),
+                stats: {
+                    total_agents: total,
+                    active_agents: activeAgents,
+                    disabled_agents: disabledAgents,
+                    call_agents: callAgents,
+                    chat_agents: chatAgents
+                },
+                pagination: {
+                    current_page: page,
+                    per_page: limit,
+                    total: total,
+                    total_pages: Math.ceil(total / limit)
+                }
+            };
+
+            this.logger.log(`Successfully retrieved agents for organisation ${orgId} - Total: ${total}, Returned: ${agents.length}`);
+            return result;
+
+        } catch (error) {
+            this.logger.error(`Error in getOrganisationAgents for ${id_or_slug}: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    async getOrganisationOverview(
+        idOrSlug: string,
+        startDate?: string,
+        endDate?: string,
+        isSuperAdmin: boolean = false
+    ) {
+        this.logger.log(`Getting organisation overview for: ${idOrSlug}, startDate: ${startDate}, endDate: ${endDate}, isSuperAdmin: ${isSuperAdmin}`);
+
+        try {
+
+            // Find organisation by ID or slug
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    OR: [
+                        { id: isNaN(parseInt(idOrSlug)) ? undefined : parseInt(idOrSlug) },
+                        { slug: idOrSlug }
+                    ],
+                }
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
+            }
+
+            // Check permissions - super admin can access any org, others need specific access
+            if (!isSuperAdmin) {
+                // Here you might want to check if user belongs to this organization
+                // For now, we'll just check if org is active
+                if (organisation.is_deleted === 1 || organisation.is_disabled === 1) {
+                    throw new NotFoundException('Organisation not found');
+                }
+            }
+
+            // Set date range based on provided parameters
+            const now = new Date();
+            let start: Date | undefined;
+            let end: Date | undefined;
+
+            if (startDate && endDate) {
+                // Both dates provided
+                start = new Date(startDate);
+                end = new Date(endDate);
+            } else if (startDate && !endDate) {
+                // Only start date provided - show from start to very end (no end limit)
+                start = new Date(startDate);
+                end = undefined;
+            } else if (!startDate && endDate) {
+                // Only end date provided - show current month up to the specified end date
+                const endDateObj = new Date(endDate);
+                start = new Date(endDateObj.getFullYear(), endDateObj.getMonth(), 1); // First day of the end date's month
+                end = endDateObj;
+            } else {
+                // Neither provided - default to current month (November 2025)
+                const currentYear = now.getFullYear(); // 2025
+                const currentMonth = now.getMonth(); // 10 (November, 0-indexed)
+
+                start = new Date(currentYear, currentMonth, 1); // November 1st, 2025
+                end = new Date(currentYear, currentMonth + 1, 0); // Last day of November 2025
+            }
+
+            // Set time boundaries only for dates that are defined
+            if (end) {
+                end.setHours(23, 59, 59, 999);
+            }
+            if (start) {
+                start.setHours(0, 0, 0, 0);
+            }
+
+            const orgId = organisation.id;
+
+            // Get total counts for the period
+            const [totalChats, totalCalls, totalLeads, qualifiedLeads] = await Promise.all([
+                this.getTotalChats(orgId, start, end),
+                this.getTotalCalls(orgId, start, end),
+                this.getTotalLeads(orgId, start, end),
+                this.getQualifiedLeads(orgId, start, end),
+            ]);
+
+            // Get daily stats (only if both dates are available)
+            const dailyStats = (start && end) ? await this.getDailyStats(orgId, start, end) : [];
+
+            const overviewData = {
+                organisation: {
+                    id: organisation.id,
+                    name: organisation.name,
+                    slug: organisation.slug,
+                },
+                overview: {
+                    totalChats,
+                    totalCalls,
+                    totalLeads,
+                    qualifiedLeads,
+                },
+                dailyStats,
+                period: {
+                    startDate: start ? start.toISOString().split('T')[0] : null,
+                    endDate: end ? end.toISOString().split('T')[0] : null,
+                },
+            };
+
+            this.logger.log(`Successfully retrieved organisation overview for: ${idOrSlug}`);
+            return overviewData;
+
+        } catch (error) {
+            this.logger.error(`Error in getOrganisationOverview for ${idOrSlug}: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    async getOrganisationChats(
+        idOrSlug: string,
+        filters: ChatsFilterParams,
+        isSuperAdmin: boolean = false
+    ) {
+        const id = Number(idOrSlug);
+        const slug = idOrSlug;
+
+        // Find organisation by ID or slug
+        const organisation = await this.prisma.organisation.findFirst({
+            where: {
+                OR: [
+                    { id: id },
+                    { slug: slug }
+                ]
+            }
+        });
+
+        if (!organisation) {
+            throw new NotFoundException('Organisation not found');
+        }
+
+        // Check permissions
+        if (!isSuperAdmin) {
+            if (organisation.is_deleted === 1 || organisation.is_disabled === 1) {
+                throw new NotFoundException('Organisation not found');
+            }
+        }
+
+        // Set date range based on provided parameters  
+        const now = new Date();
+        let start: Date | undefined;
+        let end: Date | undefined;
+
+        if (filters.startDate && filters.endDate) {
+            start = new Date(filters.startDate);
+            end = new Date(filters.endDate);
+        } else if (filters.startDate && !filters.endDate) {
+            start = new Date(filters.startDate);
+            end = undefined;
+        } else if (!filters.startDate && filters.endDate) {
+            start = undefined;
+            end = new Date(filters.endDate);
+        } else {
+            // Default to current month
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            end = new Date(now);
+        }
+
+        // Set time boundaries
+        if (end) end.setHours(23, 59, 59, 999);
+        if (start) start.setHours(0, 0, 0, 0);
+
+        const orgId = organisation.id;
+
+        // Build where condition for chats
+        const whereCondition: ChatWhereInput = {
+            organisation_id: orgId,
+            is_deleted: 0,
+        };
+
+        // Apply date filters
+        if (start || end) {
+            whereCondition.created_at = {};
+            if (start) whereCondition.created_at.gte = start;
+            if (end) whereCondition.created_at.lte = end;
+        }
+
+        // Apply status filter
+        if (filters.status) {
+            whereCondition.status = filters.status;
+        }
+
+        // Apply source filter
+        if (filters.source) {
+            whereCondition.source = filters.source as any;
+        }
+
+        // Calculate pagination
+        const skip = (filters.page - 1) * filters.limit;
+
+        // Get chats with first two messages and lead info
+        const [chats, totalChats, openChats, chatsWithLead, chatsWithoutLead] = await Promise.all([
+            this.prisma.chat.findMany({
+                where: whereCondition,
+                include: {
+                    lead: {
+                        select: {
+                            id: true,
+                            first_name: true,
+                            last_name: true,
+                        },
+                    },
+                    messages: {
+                        select: {
+                            id: true,
+                            role: true,
+                            content: true,
+                            created_at: true,
+                        },
+                        orderBy: {
+                            created_at: 'asc',
+                        },
+                        take: 2, // First two messages
+                    },
+                    agent: {
+                        select: {
+                            id: true,
+                            name: true,
+                        },
+                    },
+                },
+                orderBy: {
+                    created_at: 'desc',
+                },
+                skip,
+                take: filters.limit,
+            }),
+            // Total chats count
+            this.prisma.chat.count({
+                where: whereCondition,
+            }),
+            // Open chats count
+            this.prisma.chat.count({
+                where: {
+                    ...whereCondition,
+                    status: 'open',
+                },
+            }),
+            // Chats with lead count
+            this.prisma.chat.count({
+                where: {
+                    ...whereCondition,
+                    lead_id: { not: null },
+                },
+            }),
+            // Chats without lead count
+            this.prisma.chat.count({
+                where: {
+                    ...whereCondition,
+                    lead_id: null,
+                },
+            }),
+        ]);
+
+        // Transform chats data
+        const transformedChats = chats.map(chat => ({
+            id: chat.id,
+            status: chat.status,
+            source: chat.source,
+            created_at: chat.created_at,
+            updated_at: chat.updated_at,
+            name: chat.lead
+                ? `${chat.lead.first_name || ''} ${chat.lead.last_name || ''}`.trim() || null
+                : null,
+            lead_id: chat.lead_id,
+            lead: chat.lead, // Complete lead details
+            agent: chat.agent,
+            messages: chat.messages,
+            total_cost: chat.total_cost,
+        }));
+
+        return {
+            organisation: {
+                id: organisation.id,
+                name: organisation.name,
+                slug: organisation.slug,
+            },
+            chats: transformedChats,
+            summary: {
+                totalChats,
+                openChats,
+                chatsWithLead,
+                chatsWithoutLead,
+            },
+            pagination: {
+                page: filters.page,
+                limit: filters.limit,
+                total: totalChats,
+                totalPages: Math.ceil(totalChats / filters.limit),
+            },
+            filters: {
+                startDate: start ? start.toISOString().split('T')[0] : null,
+                endDate: end ? end.toISOString().split('T')[0] : null,
+                status: filters.status || null,
+                source: filters.source || null,
+            },
+        };
+    }
+
+    async getChatDetails(
+        idOrSlug: string,
+        chatId: number,
+        isSuperAdmin: boolean = false
+    ) {
+        const id = Number(idOrSlug);
+        const slug = idOrSlug;
+
+        // Find organisation by ID or slug
+        const organisation = await this.prisma.organisation.findFirst({
+            where: {
+                OR: [
+                    { id: id },
+                    { slug: slug }
+                ]
+            }
+        });
+
+        if (!organisation) {
+            throw new NotFoundException('Organisation not found');
+        }
+
+        // Check permissions
+        if (!isSuperAdmin) {
+            if (organisation.is_deleted === 1 || organisation.is_disabled === 1) {
+                throw new NotFoundException('Organisation not found');
+            }
+        }
+
+        const orgId = organisation.id;
+
+        // Get the specific chat with all details
+        const chat = await this.prisma.chat.findFirst({
+            where: {
+                id: chatId,
+                organisation_id: orgId,
+                is_deleted: 0,
+            },
+            include: {
+                // Complete lead details
+                lead: {
+                    select: {
+                        id: true,
+                        first_name: true,
+                        last_name: true,
+                        email: true,
+                        phone_number: true,
+                        source: true,
+                        status: true,
+                        is_indian: true,
+                        follow_up_count: true,
+                        reschedule_count: true,
+                        last_follow_up: true,
+                        next_follow_up: true,
+                        call_active: true,
+                        created_at: true,
+                        updated_at: true,
+                    },
+                },
+                // Complete agent details
+                agent: {
+                    select: {
+                        id: true,
+                        name: true,
+                        slug: true,
+                        phone_number: true,
+                        base_prompt: true,
+                        image_url: true,
+                        initial_prompt: true,
+                        analysis_prompt: true,
+                        created_at: true,
+                        updated_at: true,
+                    },
+                },
+                // All messages in proper chronological order
+                messages: {
+                    select: {
+                        id: true,
+                        role: true,
+                        content: true,
+                        prompt_tokens: true,
+                        completion_tokens: true,
+                        total_cost: true,
+                        created_at: true,
+                        updated_at: true,
+                    },
+                    orderBy: {
+                        created_at: 'asc', // Chronological order
+                    },
+                },
+                // Associated costs
+                costs: {
+                    select: {
+                        id: true,
+                        type: true,
+                        amount: true,
+                        summary: true,
+                        created_at: true,
+                    },
+                    orderBy: {
+                        created_at: 'asc',
+                    },
+                },
+            },
+        });
+
+        if (!chat) {
+            throw new NotFoundException('Chat not found');
+        }
+
+        // Calculate totals
+        const messageCount = chat.messages.length;
+        const totalPromptTokens = chat.messages.reduce((sum, msg) => sum + msg.prompt_tokens, 0);
+        const totalCompletionTokens = chat.messages.reduce((sum, msg) => sum + msg.completion_tokens, 0);
+        const totalMessagesCost = chat.messages.reduce((sum, msg) => sum + (msg.total_cost || 0), 0);
+        const totalAssociatedCosts = chat.costs.reduce((sum, cost) => sum + cost.amount, 0);
+        const grandTotalCost = (chat.total_cost || 0) + totalMessagesCost + totalAssociatedCosts;
+
+        // Group messages by role for quick insights
+        const messagesByRole = chat.messages.reduce((acc, msg) => {
+            acc[msg.role] = (acc[msg.role] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+
+        // Calculate chat duration
+        const firstMessage = chat.messages[0];
+        const lastMessage = chat.messages[chat.messages.length - 1];
+        const chatDuration = firstMessage && lastMessage
+            ? new Date(lastMessage.created_at).getTime() - new Date(firstMessage.created_at).getTime()
+            : null;
+
+        return {
+            organisation: {
+                id: organisation.id,
+                name: organisation.name,
+                slug: organisation.slug,
+            },
+            chat: {
+                id: chat.id,
+                status: chat.status,
+                source: chat.source,
+                summary: chat.summary,
+                analysis: chat.analysis,
+                prompt_tokens: chat.prompt_tokens,
+                completion_tokens: chat.completion_tokens,
+                total_cost: chat.total_cost,
+                created_at: chat.created_at,
+                updated_at: chat.updated_at,
+                name: chat.lead
+                    ? `${chat.lead.first_name || ''} ${chat.lead.last_name || ''}`.trim() || null
+                    : null,
+                // Duration in milliseconds (null if no messages)
+                duration: chatDuration,
+            },
+            lead: chat.lead,
+            agent: chat.agent,
+            messages: chat.messages,
+            costs: chat.costs,
+            statistics: {
+                messageCount,
+                messagesByRole,
+                totalPromptTokens,
+                totalCompletionTokens,
+                totalMessagesCost,
+                totalAssociatedCosts,
+                grandTotalCost,
+                averageMessageLength: messageCount > 0
+                    ? Math.round(chat.messages.reduce((sum, msg) => sum + msg.content.length, 0) / messageCount)
+                    : 0,
+            },
+        };
+    }
+
+    private async getTotalChats(orgId: number, start?: Date, end?: Date): Promise<number> {
+        const whereCondition: ChatWhereInput = {
+            organisation_id: orgId,
+            is_deleted: 0,
+        };
+
+        if (start || end) {
+            whereCondition.created_at = {};
+            if (start) whereCondition.created_at.gte = start;
+            if (end) whereCondition.created_at.lte = end;
+        }
+
+        const count = await this.prisma.chat.count({
+            where: whereCondition,
+        });
+        return count;
+    }
+
+    private async getTotalCalls(orgId: number, start?: Date, end?: Date): Promise<number> {
+        const whereCondition: CallWhereInput = {
+            organisation_id: orgId,
+            is_deleted: 0,
+        };
+
+        if (start || end) {
+            whereCondition.created_at = {};
+            if (start) whereCondition.created_at.gte = start;
+            if (end) whereCondition.created_at.lte = end;
+        }
+
+        const count = await this.prisma.call.count({
+            where: whereCondition,
+        });
+        return count;
+    }
+
+    private async getTotalLeads(orgId: number, start?: Date, end?: Date): Promise<number> {
+        const whereCondition: LeadWhereInput = {
+            organisations: {
+                some: {
+                    id: orgId,
+                },
+            },
+            is_deleted: 0,
+        };
+
+        if (start || end) {
+            whereCondition.created_at = {};
+            if (start) whereCondition.created_at.gte = start;
+            if (end) whereCondition.created_at.lte = end;
+        }
+
+        const count = await this.prisma.lead.count({
+            where: whereCondition,
+        });
+        return count;
+    }
+
+    private async getQualifiedLeads(orgId: number, start?: Date, end?: Date): Promise<number> {
+        const whereCondition: LeadWhereInput = {
+            organisations: {
+                some: {
+                    id: orgId,
+                },
+            },
+            status: "qualified",
+            is_deleted: 0,
+        };
+
+        if (start || end) {
+            whereCondition.created_at = {};
+            if (start) whereCondition.created_at.gte = start;
+            if (end) whereCondition.created_at.lte = end;
+        }
+
+        const count = await this.prisma.lead.count({
+            where: whereCondition,
+        });
+        return count;
+    }
+
+    private async getDailyStats(orgId: number, start: Date, end: Date) {
+        // Use raw SQL for optimal performance with date aggregation
+        // created_at::date extracts only the date part (YYYY-MM-DD) from timestamp
+        // This groups all records from the same calendar day together
+        const [chatStats, callStats] = await Promise.all([
+            this.prisma.$queryRaw<Array<{ date: string; count: bigint }>>`
+                SELECT 
+                    created_at::date as date,
+                    COUNT(*) as count
+                FROM "Chat"
+                WHERE organisation_id = ${orgId}
+                    AND created_at >= ${start}
+                    AND created_at <= ${end}
+                    AND is_deleted = 0
+                GROUP BY created_at::date
+                ORDER BY created_at::date
+            `,
+            this.prisma.$queryRaw<Array<{ date: string; count: bigint }>>`
+                SELECT 
+                    created_at::date as date,
+                    COUNT(*) as count
+                FROM "Call"
+                WHERE organisation_id = ${orgId}
+                    AND created_at >= ${start}
+                    AND created_at <= ${end}
+                    AND is_deleted = 0
+                GROUP BY created_at::date
+                ORDER BY created_at::date
+            `
+        ]);
+
+        // Convert BigInt to number and create lookup maps
+        const chatMap = new Map<string, number>();
+        const callMap = new Map<string, number>();
+
+        chatStats.forEach(stat => {
+            // Handle both Date object and string formats
+            const dateStr = typeof stat.date === 'string'
+                ? stat.date
+                : new Date(stat.date).toISOString().split('T')[0];
+            chatMap.set(dateStr, Number(stat.count));
+        });
+
+        callStats.forEach(stat => {
+            // Handle both Date object and string formats
+            const dateStr = typeof stat.date === 'string'
+                ? stat.date
+                : new Date(stat.date).toISOString().split('T')[0];
+            callMap.set(dateStr, Number(stat.count));
+        });
+
+        // Generate complete date range with counts (including zero days)
+        const dailyStats: Array<{
+            date: string;
+            chatCount: number;
+            callCount: number;
+        }> = [];
+
+        // Create date objects for iteration (normalize to avoid timezone issues)
+        const currentDate = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
+        const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1);
+
+        while (currentDate <= endDate) {
+            const dateStr = currentDate.toISOString().split('T')[0];
+
+            dailyStats.push({
+                date: dateStr,
+                chatCount: chatMap.get(dateStr) || 0,
+                callCount: callMap.get(dateStr) || 0,
+            });
+
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+
+        return dailyStats;
+    }
+
+    async getOrganisationCalls(
+        id_or_slug: string,
+        filters: CallsFilterParams,
+        isSuperAdmin: boolean = false
+    ) {
+        const { start_date, end_date, status, direction, source, page = 1, limit = 1000 } = filters;
+
+        // Find organisation by id or slug
+        const organisation = await this.prisma.organisation.findFirst({
+            where: {
+                OR: [
+                    { id: isNaN(parseInt(id_or_slug)) ? undefined : parseInt(id_or_slug) },
+                    { slug: id_or_slug }
+                ],
+                ...(isSuperAdmin ? {} : { is_deleted: 0, is_disabled: 0 })
+            }
+        });
+
+        if (!organisation) {
+            throw new NotFoundException('Organisation not found');
+        }
+
+        const orgId = organisation.id;
+
+        // Build where condition for calls
+        let whereCondition: CallWhereInput = {
+            organisation_id: orgId,
+            is_deleted: 0
+        };
+
+        // Date filter
+        if (start_date || end_date) {
+            whereCondition.started_at = {};
+            if (start_date) {
+                whereCondition.started_at.gte = new Date(start_date);
+            }
+            if (end_date) {
+                const endDate = new Date(end_date);
+                endDate.setHours(23, 59, 59, 999);
+                whereCondition.started_at.lte = endDate;
+            }
+        }
+
+        // Status filter
+        if (status) {
+            whereCondition.status = status;
+        }
+
+        // Direction filter
+        if (direction) {
+            whereCondition.direction = direction;
+        }
+
+        // Source filter
+        if (source) {
+            whereCondition.source = source as any;
+        }
+
+        // Get total count
+        const total = await this.prisma.call.count({
+            where: whereCondition
+        });
+
+        // Calculate stats
+        const totalCalls = await this.prisma.call.count({
+            where: {
+                organisation_id: orgId,
+                is_deleted: 0,
+                ...(start_date || end_date ? {
+                    started_at: {
+                        ...(start_date ? { gte: new Date(start_date) } : {}),
+                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
+                    }
+                } : {})
+            }
+        });
+
+        const missedCalls = await this.prisma.call.count({
+            where: {
+                organisation_id: orgId,
+                is_deleted: 0,
+                status: 'missed',
+                ...(start_date || end_date ? {
+                    started_at: {
+                        ...(start_date ? { gte: new Date(start_date) } : {}),
+                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
+                    }
+                } : {})
+            }
+        });
+
+        const activeCalls = await this.prisma.call.count({
+            where: {
+                organisation_id: orgId,
+                is_deleted: 0,
+                status: 'active',
+                ...(start_date || end_date ? {
+                    started_at: {
+                        ...(start_date ? { gte: new Date(start_date) } : {}),
+                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
+                    }
+                } : {})
+            }
+        });
+
+        const disconnectedCalls = await this.prisma.call.count({
+            where: {
+                organisation_id: orgId,
+                is_deleted: 0,
+                status: 'disconnected',
+                ...(start_date || end_date ? {
+                    started_at: {
+                        ...(start_date ? { gte: new Date(start_date) } : {}),
+                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
+                    }
+                } : {})
+            }
+        });
+
+        // Get calls
+        const calls = await this.prisma.call.findMany({
+            where: whereCondition,
+            include: {
+                lead: {
+                    select: {
+                        id: true,
+                        first_name: true,
+                        last_name: true,
+                        email: true,
+                        phone_number: true,
+                        source: true,
+                        status: true,
+                        created_at: true,
+                        updated_at: true
+                    }
+                },
+                agent: {
+                    select: {
+                        id: true,
+                        name: true,
+                        phone_number: true,
+                        created_at: true
+                    }
+                }
             },
             orderBy: {
-              created_at: 'desc',
+                started_at: 'desc'
             },
-          },
-          organisation: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-            },
-          },
-        },
-      });
-
-      if (!lead) {
-        throw new NotFoundException('Lead not found');
-      }
-
-      // Calculate some statistics
-      const totalConversations = lead.conversations.length;
-      const conversationsByType = lead.conversations.reduce(
-        (acc, conv) => {
-          acc[conv.type] = (acc[conv.type] || 0) + 1;
-          return acc;
-        },
-        {} as Record<string, number>,
-      );
-
-      const conversationsBySource = lead.conversations.reduce(
-        (acc, conv) => {
-          if (conv.source) {
-            acc[conv.source] = (acc[conv.source] || 0) + 1;
-          }
-          return acc;
-        },
-        {} as Record<string, number>,
-      );
-
-      // Format the response with detailed information
-      const result = {
-        lead: {
-          id: lead.id,
-          first_name: lead.first_name,
-          last_name: lead.last_name,
-          name:
-            `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || null,
-          email: lead.email,
-          phone_number: lead.phone_number,
-          source: lead.source,
-          status: lead.status,
-          additional_info: lead.additional_info,
-          follow_ups: lead.follow_ups,
-          next_follow_up: lead.next_follow_up,
-          zoho_id: lead.zoho_id,
-          in_process: lead.in_process,
-          created_at: lead.created_at,
-          updated_at: lead.updated_at,
-          agents: lead.agents,
-          conversations: lead.conversations,
-          organisation: lead.organisation,
-        },
-        statistics: {
-          totalConversations,
-          conversationsByType,
-          conversationsBySource,
-          totalMessages: lead.conversations.reduce(
-            (sum, conv) => sum + conv.messages.length,
-            0,
-          ),
-        },
-      };
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - end`,
-          data: {
-            organisationId: organisation.id,
-            leadId: lead.id,
-            conversationCount: totalConversations,
-          },
-        }),
-        methodName,
-      );
-
-      return result;
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error?.message || 'Unknown error',
-          stack: error?.stack,
-        }),
-        methodName,
-      );
-      throw error;
-    }
-  }
-
-  async getAnalytics(
-    user: User,
-    idOrSlug: string,
-    filters: ProcessedAnalyticsFilters,
-  ) {
-    const methodName = 'getAnalytics';
-
-    try {
-      const now = new Date();
-
-      // Handle date range properly with timezone considerations (consistent with other APIs)
-      let defaultStartDate: Date;
-      let defaultEndDate: Date;
-
-      if (filters.startDate) {
-        // If startDate is provided, set it to beginning of that day in UTC
-        defaultStartDate = new Date(filters.startDate);
-        defaultStartDate.setUTCHours(0, 0, 0, 0);
-      } else {
-        // Default to first day of current month at 00:00:00 UTC
-        defaultStartDate = new Date(
-          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
-        );
-      }
-
-      if (filters.endDate) {
-        // If endDate is provided, set it to end of that day in UTC
-        defaultEndDate = new Date(filters.endDate);
-        defaultEndDate.setUTCHours(23, 59, 59, 999);
-      } else {
-        // Default to last day of current month at 23:59:59.999 UTC
-        defaultEndDate = new Date(
-          Date.UTC(
-            now.getUTCFullYear(),
-            now.getUTCMonth() + 1,
-            0,
-            23,
-            59,
-            59,
-            999,
-          ),
-        );
-      }
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - start`,
-          data: {
-            user,
-            idOrSlug,
-            filters,
-            startDate: defaultStartDate,
-            endDate: defaultEndDate,
-          },
-        }),
-        methodName,
-      );
-
-      const id = Number(idOrSlug);
-      const slug = idOrSlug;
-
-      const whereCondition: Prisma.OrganisationWhereInput = {
-        OR: [{ id: isNaN(id) ? undefined : id }, { slug: slug }],
-      };
-
-      if (!user.is_super_admin) {
-        whereCondition.is_deleted = 0;
-        whereCondition.is_disabled = 0;
-      }
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: whereCondition,
-      });
-
-      if (!organisation) {
-        throw new NotFoundException('Organisation not found');
-      }
-
-      // Build base filters for analytics queries
-      const baseConversationWhere: Prisma.ConversationWhereInput = {
-        organisation_id: organisation.id,
-        created_at: {
-          gte: defaultStartDate,
-          lte: defaultEndDate,
-        },
-      };
-
-      if (!user.is_super_admin) {
-        baseConversationWhere.is_deleted = 0;
-        baseConversationWhere.is_disabled = 0;
-      }
-
-      // Add type filter if specified
-      if (filters.type) {
-        baseConversationWhere.type = filters.type;
-      }
-
-      // Add agent filter
-      if (filters.agent_slug_or_id) {
-        const agentId = Number(filters.agent_slug_or_id);
-        baseConversationWhere.agent = {
-          OR: [
-            { id: isNaN(agentId) ? undefined : agentId },
-            { slug: filters.agent_slug_or_id },
-          ],
-        };
-      }
-
-      // Add source filter
-      if (filters.source) {
-        baseConversationWhere.source = filters.source;
-      }
-
-      // Build separate filters for different types of conversations
-      const chatConversationWhere: Prisma.ConversationWhereInput = {
-        ...baseConversationWhere,
-        ...(!filters.type && { type: CONVERSATION_TYPE.CHAT }), // Only filter by CHAT if no type specified
-      };
-
-      const callConversationWhere: Prisma.ConversationWhereInput = {
-        ...baseConversationWhere,
-        ...(!filters.type && { type: CONVERSATION_TYPE.CALL }), // Only filter by CALL if no type specified
-      };
-
-      // Use filtered base where for leads analytics
-      const leadWhere: Prisma.LeadWhereInput = {
-        organisation_id: organisation.id,
-        created_at: {
-          gte: defaultStartDate,
-          lte: defaultEndDate,
-        },
-        ...(filters.type
-          ? {
-            conversations: {
-              some: { type: filters.type },
-            },
-          }
-          : {}),
-      };
-
-      // Generate complete date range array using UTC dates for daily breakdown
-      const dateRange: string[] = [];
-      const currentDate = new Date(defaultStartDate);
-      while (currentDate <= defaultEndDate) {
-        dateRange.push(currentDate.toISOString().split('T')[0]);
-        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
-      }
-
-      // Execute comprehensive analytics queries in parallel for optimal performance
-      const [
-        // Core conversation metrics
-        totalConversations,
-        totalCalls,
-        totalLeads,
-        leadsWithFollowUp,
-        // Conversation analytics data
-        conversationLengthData,
-        callLengthData,
-        // Daily analytics breakdown
-        dailyAnalyticsData,
-      ] = await Promise.all([
-        // Count total conversations (CHAT type if no filter, or filtered by type)
-        this.prisma.conversation.count({
-          where: filters.type ? baseConversationWhere : chatConversationWhere,
-        }),
-        // Count total calls (CALL type if no filter, or filtered by type)
-        this.prisma.conversation.count({
-          where: filters.type ? baseConversationWhere : callConversationWhere,
-        }),
-        // Count total leads generated
-        this.prisma.lead.count({
-          where: leadWhere,
-        }),
-        // Count leads with follow up (leads that have next_follow_up value)
-        this.prisma.lead.count({
-          where: {
-            ...leadWhere,
-            next_follow_up: {
-              not: null,
-            },
-          },
-        }),
-        // Average conversation length (messages per conversation)
-        this.prisma.$queryRawUnsafe<Array<{ avg_length: number }>>(
-          `SELECT AVG(message_count) as avg_length
-                    FROM (
-                        SELECT c.id, COUNT(m.id) as message_count
-                        FROM "Conversation" c
-                        LEFT JOIN "Message" m ON m.conversation_id = c.id AND m.role = 'user'
-                        WHERE c.organisation_id = ${organisation.id}
-                            AND c.type = 'CHAT'
-                            AND c.created_at >= '${defaultStartDate.toISOString()}'
-                            AND c.created_at <= '${defaultEndDate.toISOString()}'
-                            ${!user.is_super_admin ? 'AND c.is_deleted = 0 AND c.is_disabled = 0' : ''}
-                            ${filters.agent_slug_or_id
-            ? !isNaN(Number(filters.agent_slug_or_id))
-              ? `AND c.agent_id = ${Number(filters.agent_slug_or_id)}`
-              : `AND EXISTS (SELECT 1 FROM "Agent" a WHERE a.id = c.agent_id AND a.slug = '${filters.agent_slug_or_id}')`
-            : ''
-          }
-                            ${filters.source ? `AND c.source = '${filters.source}'` : ''}
-                        GROUP BY c.id
-                    ) subquery`,
-        ),
-        // Average call length (duration in minutes for CALL conversations)
-        this.prisma.$queryRawUnsafe<Array<{ avg_call_length: number }>>(
-          `SELECT AVG(c.duration::float) as avg_call_length
-                    FROM "Conversation" c
-                    WHERE c.organisation_id = ${organisation.id}
-                        AND c.type = 'CALL'
-                        AND c.duration IS NOT NULL
-                        AND c.created_at >= '${defaultStartDate.toISOString()}'
-                        AND c.created_at <= '${defaultEndDate.toISOString()}'
-                        ${!user.is_super_admin ? 'AND c.is_deleted = 0 AND c.is_disabled = 0' : ''}
-                        ${filters.agent_slug_or_id
-            ? !isNaN(Number(filters.agent_slug_or_id))
-              ? `AND c.agent_id = ${Number(filters.agent_slug_or_id)}`
-              : `AND EXISTS (SELECT 1 FROM "Agent" a WHERE a.id = c.agent_id AND a.slug = '${filters.agent_slug_or_id}')`
-            : ''
-          }
-                        ${filters.source ? `AND c.source = '${filters.source}'` : ''}`,
-        ),
-        // Daily analytics breakdown
-        this.prisma.$queryRawUnsafe<
-          Array<{
-            date: Date;
-            conversations: bigint;
-            calls: bigint;
-            leads: bigint;
-          }>
-        >(
-          `SELECT 
-                        DATE(c.created_at) as date,
-                        COUNT(CASE WHEN c.type = 'CHAT' THEN 1 END) as conversations,
-                        COUNT(CASE WHEN c.type = 'CALL' THEN 1 END) as calls,
-                        COUNT(DISTINCT l.id) as leads
-                    FROM "Conversation" c
-                    LEFT JOIN "Lead" l ON l.id = c.lead_id 
-                        AND l.created_at >= '${defaultStartDate.toISOString()}' 
-                        AND l.created_at <= '${defaultEndDate.toISOString()}'
-                    WHERE c.organisation_id = ${organisation.id}
-                        AND c.created_at >= '${defaultStartDate.toISOString()}'
-                        AND c.created_at <= '${defaultEndDate.toISOString()}'
-                        ${!user.is_super_admin ? 'AND c.is_deleted = 0 AND c.is_disabled = 0' : ''}
-                        ${filters.type ? `AND c.type = '${filters.type}'` : ''}
-                        ${filters.agent_slug_or_id
-            ? !isNaN(Number(filters.agent_slug_or_id))
-              ? `AND c.agent_id = ${Number(filters.agent_slug_or_id)}`
-              : `AND EXISTS (SELECT 1 FROM "Agent" a WHERE a.id = c.agent_id AND a.slug = '${filters.agent_slug_or_id}')`
-            : ''
-          }
-                        ${filters.source ? `AND c.source = '${filters.source}'` : ''}
-                    GROUP BY DATE(c.created_at)
-                    ORDER BY date ASC`,
-        ),
-      ]);
-
-      // Process analytics data
-      const avgConversationLength = conversationLengthData[0]?.avg_length || 0;
-      const avgCallLength = callLengthData[0]?.avg_call_length || 0;
-
-      // Build analytics objects
-      const conversationAnalytics: ConversationAnalytics = {
-        totalConversations:
-          filters.type === CONVERSATION_TYPE.CALL ? 0 : totalConversations,
-        totalCalls: filters.type === CONVERSATION_TYPE.CHAT ? 0 : totalCalls,
-        averageConversationLength:
-          filters.type === CONVERSATION_TYPE.CALL
-            ? 0
-            : Math.round(avgConversationLength * 100) / 100,
-        averageCallLength:
-          filters.type === CONVERSATION_TYPE.CHAT
-            ? 0
-            : Math.round(avgCallLength * 100) / 100,
-        totalLeadsGenerated: totalLeads,
-        leadsWithFollowUp,
-      };
-
-      // Create daily analytics breakdown map for filling missing dates
-      const dailyAnalyticsMap = new Map<
-        string,
-        {
-          conversations: number;
-          calls: number;
-          leads: number;
-        }
-      >();
-
-      dailyAnalyticsData.forEach((item) => {
-        dailyAnalyticsMap.set(item.date.toISOString().split('T')[0], {
-          conversations: Number(item.conversations),
-          calls: Number(item.calls),
-          leads: Number(item.leads),
+            skip: (page - 1) * limit,
+            take: limit
         });
-      });
 
-      // Fill daily breakdown with all dates in range
-      const dailyBreakdown: DailyAnalyticsBreakdown[] = dateRange.map(
-        (date) => ({
-          date,
-          conversations: dailyAnalyticsMap.get(date)?.conversations || 0,
-          calls: dailyAnalyticsMap.get(date)?.calls || 0,
-          leads: dailyAnalyticsMap.get(date)?.leads || 0,
-        }),
-      );
-
-      // Fetch agents for this organization
-      const agentWhere: Prisma.AgentWhereInput = {
-        organisation_id: organisation.id,
-      };
-
-      if (!user.is_super_admin) {
-        agentWhere.is_deleted = 0;
-        agentWhere.is_disabled = 0;
-      }
-
-      const agents = await this.prisma.agent.findMany({
-        where: agentWhere,
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-        },
-        orderBy: {
-          name: 'asc',
-        },
-      });
-
-      // Hardcoded types and sources
-      const types = [
-        { label: 'Call', value: 'CALL' },
-        { label: 'Chat', value: 'CHAT' },
-      ];
-
-      const sources = [
-        { label: 'Zoho', value: 'zoho' },
-        { label: 'Instagram', value: 'instagram' },
-        { label: 'Whatsapp', value: 'whatsapp' },
-      ];
-
-      // Format agents for response
-      const formattedAgents = agents.map((agent) => ({
-        label: agent.name,
-        value: agent.slug,
-      }));
-
-      // Construct comprehensive analytics response
-      const result: AnalyticsResponse = {
-        creditsPlan: organisation.credits_plan,
-        remainingConversationCredits: organisation.conversation_credits,
-        remainingCallCredits: organisation.call_credits,
-        usedConversationCredits: totalConversations,
-        usedCallCredits: totalCalls,
-        dateRange: {
-          startDate: defaultStartDate,
-          endDate: defaultEndDate,
-        },
-        conversationAnalytics,
-        dailyBreakdown,
-        filters: {
-          agent: filters.agent_slug_or_id,
-          source: filters.source,
-          type: filters.type,
-        },
-        types,
-        sources,
-        agents: formattedAgents,
-      };
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - end`,
-          data: {
-            organisationId: organisation.id,
-            resultSize: JSON.stringify(result).length,
-          },
-        }),
-        methodName,
-      );
-
-      return result;
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error?.message || 'Unknown error',
-          stack: error?.stack,
-        }),
-        methodName,
-      );
-      throw error;
-    }
-  }
-
-  async getAllAgents(user: User, idOrSlug: string) {
-    const methodName = 'getAllAgents';
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - start`,
-        data: { user, idOrSlug },
-      }),
-      methodName,
-    );
-
-    const orgId = Number(idOrSlug);
-    const orgSlug = idOrSlug;
-
-    const whereCondition: Prisma.AgentWhereInput = {
-      organisation: {
-        OR: [{ id: isNaN(orgId) ? undefined : orgId }, { slug: orgSlug }],
-      },
-    };
-
-    if (!user.is_super_admin) {
-      whereCondition.is_deleted = 0;
-      whereCondition.is_disabled = 0;
-    }
-
-    const agents = await this.prisma.agent.findMany({
-      where: whereCondition,
-    });
-
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - end`,
-        data: agents,
-      }),
-      methodName,
-    );
-
-    return agents;
-  }
-
-  async getAvailableChannels(org_id_or_slug: string): Promise<
-    ApiResponse<{
-      indian_channels: number;
-      international_channels: number;
-      total_channels: number;
-    }>
-  > {
-    const methodName = 'getAvailableChannels';
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - start`,
-        data: { org_id_or_slug },
-      }),
-      methodName,
-    );
-
-    try {
-      // Check if the parameter is a number (ID) or string (slug)
-      const isId = !isNaN(Number(org_id_or_slug));
-      const whereCondition = isId
-        ? { id: Number(org_id_or_slug) }
-        : { slug: org_id_or_slug };
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: {
-          ...whereCondition,
-          is_deleted: 0,
-          is_disabled: 0,
-        },
-      });
-
-      if (!organisation) {
-        throw new NotFoundException('Organisation not found');
-      }
-
-      const availableIndianChannels = Math.max(
-        0,
-        organisation.available_indian_channels -
-        organisation.active_indian_calls,
-      );
-      const availableInternationalChannels = Math.max(
-        0,
-        organisation.available_international_channels -
-        organisation.active_international_calls,
-      );
-      const totalAvailableChannels =
-        availableIndianChannels + availableInternationalChannels;
-
-      const result = {
-        indian_channels: availableIndianChannels,
-        international_channels: availableInternationalChannels,
-        total_channels: totalAvailableChannels,
-      };
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - success`,
-          data: result,
-        }),
-        methodName,
-      );
-
-      return ApiResponse.success(
-        'Available channels retrieved successfully',
-        result,
-      );
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error.message,
-        }),
-        methodName,
-      );
-
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      throw new BadRequestException('Failed to get available channels');
-    }
-  }
-
-  async incrementActiveCalls(
-    org_id_or_slug: string,
-    call_type: 'indian' | 'international',
-    lead_id?: string,
-    amount: number = 1,
-  ): Promise<
-    ApiResponse<{
-      active_indian_calls: number;
-      active_international_calls: number;
-      available_channels: {
-        indian_channels: number;
-        international_channels: number;
-        total_channels: number;
-      };
-    }>
-  > {
-    const methodName = 'incrementActiveCalls';
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - start`,
-        data: { org_id_or_slug, call_type, lead_id, amount },
-      }),
-      methodName,
-    );
-
-    try {
-      // Check if the parameter is a number (ID) or string (slug)
-      const isId = !isNaN(Number(org_id_or_slug));
-      const whereCondition = isId
-        ? { id: Number(org_id_or_slug) }
-        : { slug: org_id_or_slug };
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: {
-          ...whereCondition,
-          is_deleted: 0,
-          is_disabled: 0,
-        },
-      });
-
-      if (!organisation) {
-        throw new NotFoundException('Organisation not found');
-      }
-
-      // Check availability for the specific call type
-      const availableChannels =
-        call_type === 'indian'
-          ? organisation.available_indian_channels
-          : organisation.available_international_channels;
-
-      const activeCallsForType =
-        call_type === 'indian'
-          ? organisation.active_indian_calls
-          : organisation.active_international_calls;
-
-      if (activeCallsForType + amount > availableChannels) {
-        throw new BadRequestException(
-          `Not enough available ${call_type} channels to increment active calls by ${amount}. Available: ${availableChannels - activeCallsForType}, Requested: ${amount}`,
-        );
-      }
-
-      // Update the appropriate field
-      const updateField =
-        call_type === 'indian'
-          ? 'active_indian_calls'
-          : 'active_international_calls';
-      const leadIdField =
-        call_type === 'indian'
-          ? 'active_indian_call_lead_ids'
-          : 'active_international_call_lead_ids';
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - updating`,
-          data: {
-            updateField,
-            leadIdField,
-            activeCallsForType,
-            amount,
-            lead_id,
-          },
-        }),
-        methodName,
-      );
-
-      // Prepare update data - only include lead_id if it's provided and not null
-      const updateData: any = {
-        [updateField]: activeCallsForType + amount,
-      };
-
-      // Only update lead_id array if lead_id is provided and not null/empty
-      // For multiple increments with same lead_id, we add it multiple times
-      if (lead_id && lead_id.trim() !== '') {
-        const leadIdsToAdd = Array(amount).fill(lead_id);
-        updateData[leadIdField] = {
-          push: leadIdsToAdd,
+        return {
+            calls,
+            stats: {
+                total_calls: totalCalls,
+                missed_calls: missedCalls,
+                active_calls: activeCalls,
+                disconnected_calls: disconnectedCalls
+            },
+            pagination: {
+                current_page: page,
+                per_page: limit,
+                total: total,
+                total_pages: Math.ceil(total / limit)
+            }
         };
-      }
-
-      const updatedOrganisation = await this.prisma.organisation.update({
-        where: whereCondition,
-        data: updateData,
-      });
-
-      // Calculate available channels for response
-      const availableIndianChannels = Math.max(
-        0,
-        updatedOrganisation.available_indian_channels -
-        (updatedOrganisation.active_indian_calls || 0),
-      );
-      const availableInternationalChannels = Math.max(
-        0,
-        updatedOrganisation.available_international_channels -
-        (updatedOrganisation.active_international_calls || 0),
-      );
-      const totalRemainingChannels =
-        availableIndianChannels + availableInternationalChannels;
-
-      const result = {
-        active_indian_calls: updatedOrganisation.active_indian_calls || 0,
-        active_international_calls:
-          updatedOrganisation.active_international_calls || 0,
-        available_channels: {
-          indian_channels: availableIndianChannels,
-          international_channels: availableInternationalChannels,
-          total_channels: totalRemainingChannels,
-        },
-      };
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - success`,
-          data: result,
-        }),
-        methodName,
-      );
-
-      return ApiResponse.success(
-        'Active calls incremented successfully',
-        result,
-      );
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error.message,
-        }),
-        methodName,
-      );
-
-      if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
-      ) {
-        throw error;
-      }
-      throw new BadRequestException('Failed to increment active calls');
     }
-  }
 
-  async decrementActiveCalls(
-    org_id_or_slug: string,
-    call_type: 'indian' | 'international',
-    lead_id?: string,
-    amount: number = 1,
-  ): Promise<
-    ApiResponse<{
-      active_indian_calls: number;
-      active_international_calls: number;
-      available_channels: {
-        indian_channels: number;
-        international_channels: number;
-        total_channels: number;
-      };
-    }>
-  > {
-    const methodName = 'decrementActiveCalls';
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - start`,
-        data: { org_id_or_slug, call_type, lead_id, amount },
-      }),
-      methodName,
-    );
+    async getCallDetails(
+        id_or_slug: string,
+        call_id: number,
+        isSuperAdmin: boolean = false
+    ) {
+        // Find organisation by id or slug
+        const organisation = await this.prisma.organisation.findFirst({
+            where: {
+                OR: [
+                    { id: isNaN(parseInt(id_or_slug)) ? undefined : parseInt(id_or_slug) },
+                    { slug: id_or_slug }
+                ],
+                ...(isSuperAdmin ? {} : { is_deleted: 0, is_disabled: 0 })
+            }
+        });
 
-    try {
-      // Check if the parameter is a number (ID) or string (slug)
-      const isId = !isNaN(Number(org_id_or_slug));
-      const whereCondition = isId
-        ? { id: Number(org_id_or_slug) }
-        : { slug: org_id_or_slug };
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: {
-          ...whereCondition,
-          is_deleted: 0,
-          is_disabled: 0,
-        },
-      });
-
-      if (!organisation) {
-        throw new NotFoundException('Organisation not found');
-      }
-
-      // Check active calls for the specific call type
-      const activeCallsForType =
-        call_type === 'indian'
-          ? organisation.active_indian_calls || 0
-          : organisation.active_international_calls || 0;
-
-      if (activeCallsForType < amount) {
-        throw new BadRequestException(
-          `Not enough active ${call_type} calls to decrement by ${amount}. Current active calls: ${activeCallsForType}, Requested decrement: ${amount}`,
-        );
-      }
-
-      // Update the appropriate field
-      const updateField =
-        call_type === 'indian'
-          ? 'active_indian_calls'
-          : 'active_international_calls';
-      const leadIdField =
-        call_type === 'indian'
-          ? 'active_indian_call_lead_ids'
-          : 'active_international_call_lead_ids';
-
-      // Prepare update data - only include lead_id filtering if it's provided and not null
-      const updateData: any = {
-        [updateField]: Math.max(0, activeCallsForType - amount),
-      };
-
-      // Only update lead_id array if lead_id is provided and not null/empty
-      // For multiple decrements with same lead_id, we remove multiple instances
-      if (lead_id && lead_id.trim() !== '') {
-        const currentLeadIds = organisation[leadIdField] || [];
-        let remainingLeadIds = [...currentLeadIds];
-
-        // Remove the specified lead_id 'amount' times
-        for (let i = 0; i < amount; i++) {
-          const index = remainingLeadIds.indexOf(lead_id);
-          if (index > -1) {
-            remainingLeadIds.splice(index, 1);
-          }
+        if (!organisation) {
+            throw new NotFoundException('Organisation not found');
         }
 
-        updateData[leadIdField] = {
-          set: remainingLeadIds,
+        // Get call details with all related data
+        const call = await this.prisma.call.findFirst({
+            where: {
+                id: call_id,
+                organisation_id: organisation.id,
+                is_deleted: 0
+            },
+            include: {
+                organisation: {
+                    select: {
+                        id: true,
+                        name: true,
+                        slug: true,
+                        created_at: true
+                    }
+                },
+                lead: {
+                    include: {
+                        zoho_lead: true
+                    }
+                },
+                agent: {
+                    select: {
+                        id: true,
+                        name: true,
+                        slug: true,
+                        phone_number: true,
+                        image_url: true,
+                        type: true,
+                        created_at: true
+                    }
+                },
+                messages: {
+                    orderBy: {
+                        created_at: 'asc'
+                    },
+                    select: {
+                        id: true,
+                        content: true,
+                        role: true,
+                        prompt_tokens: true,
+                        completion_tokens: true,
+                        total_cost: true,
+                        created_at: true,
+                        updated_at: true
+                    }
+                },
+                costs: {
+                    select: {
+                        id: true,
+                        amount: true,
+                        type: true,
+                        summary: true,
+                        created_at: true
+                    }
+                }
+            }
+        });
+
+        if (!call) {
+            throw new NotFoundException('Call not found');
+        }
+
+        // Calculate comprehensive statistics
+        const totalCost = call.costs.reduce((sum, cost) => sum + (cost.amount || 0), 0);
+        const totalTokens = call.messages.reduce((sum, msg) => sum + (msg.prompt_tokens + msg.completion_tokens), 0);
+        const totalPromptTokens = call.messages.reduce((sum, msg) => sum + msg.prompt_tokens, 0);
+        const totalCompletionTokens = call.messages.reduce((sum, msg) => sum + msg.completion_tokens, 0);
+
+        // Message statistics by role
+        const messageStats = call.messages.reduce((stats, msg) => {
+            if (!stats[msg.role]) {
+                stats[msg.role] = 0;
+            }
+            stats[msg.role]++;
+            return stats;
+        }, {} as Record<string, number>);
+
+        // Cost breakdown by type
+        const costBreakdown = call.costs.reduce((breakdown, cost) => {
+            if (!breakdown[cost.type]) {
+                breakdown[cost.type] = 0;
+            }
+            breakdown[cost.type] += cost.amount || 0;
+            return breakdown;
+        }, {} as Record<string, number>);
+
+        const callStats = {
+            total_messages: call.messages.length,
+            message_breakdown: messageStats,
+            duration_minutes: call.duration ? Math.round(call.duration / 60) : 0,
+            duration_seconds: call.duration || 0,
+            total_cost: totalCost,
+            total_tokens: totalTokens,
+            prompt_tokens: totalPromptTokens,
+            completion_tokens: totalCompletionTokens,
+            cost_breakdown_by_type: costBreakdown,
+            detailed_costs: call.costs.map(cost => ({
+                id: cost.id,
+                type: cost.type,
+                amount: cost.amount,
+                summary: cost.summary,
+                created_at: cost.created_at
+            }))
         };
-      }
 
-      const updatedOrganisation = await this.prisma.organisation.update({
-        where: whereCondition,
-        data: updateData,
-      });
+        return {
+            id: call.id,
+            status: call.status,
+            source: call.source,
+            direction: call.direction,
+            from_number: call.from_number,
+            to_number: call.to_number,
+            started_at: call.started_at,
+            ended_at: call.ended_at,
+            duration: call.duration,
+            summary: call.summary,
+            analysis: call.analysis,
+            recording_url: call.recording_url,
+            call_ended_reason: call.call_ended_reason,
+            total_cost: call.total_cost,
+            created_at: call.created_at,
+            updated_at: call.updated_at,
+            organisation: call.organisation,
+            lead: call.lead,
+            agent: call.agent,
+            messages: call.messages,
+            stats: callStats
+        };
+    }
 
-      // Calculate available channels for response
-      const availableIndianChannels = Math.max(
-        0,
-        updatedOrganisation.available_indian_channels -
-        (updatedOrganisation.active_indian_calls || 0),
-      );
-      const availableInternationalChannels = Math.max(
-        0,
-        updatedOrganisation.available_international_channels -
-        (updatedOrganisation.active_international_calls || 0),
-      );
-      const totalRemainingChannels =
-        availableIndianChannels + availableInternationalChannels;
+    async getOrganisationLeads(
+        id_or_slug: string,
+        filters: LeadsFilterParams,
+        isSuperAdmin: boolean = false
+    ) {
+        const { start_date, end_date, status, source, is_indian, page = 1, limit = 1000 } = filters;
 
-      const result = {
-        active_indian_calls: updatedOrganisation.active_indian_calls || 0,
-        active_international_calls:
-          updatedOrganisation.active_international_calls || 0,
-        available_channels: {
-          indian_channels: availableIndianChannels,
-          international_channels: availableInternationalChannels,
-          total_channels: totalRemainingChannels,
+        // Find organisation by id or slug
+        const organisation = await this.prisma.organisation.findFirst({
+            where: {
+                OR: [
+                    { id: isNaN(parseInt(id_or_slug)) ? undefined : parseInt(id_or_slug) },
+                    { slug: id_or_slug }
+                ],
+                ...(isSuperAdmin ? {} : { is_deleted: 0, is_disabled: 0 })
+            }
+        });
+
+        if (!organisation) {
+            throw new NotFoundException('Organisation not found');
+        }
+
+        const orgId = organisation.id;
+
+        // Build where condition for leads
+        let whereCondition: LeadWhereInput = {
+            organisations: {
+                some: {
+                    id: orgId
+                }
+            },
+            is_deleted: 0
+        };
+
+        // Date filter (using created_at)
+        if (start_date || end_date) {
+            whereCondition.created_at = {};
+            if (start_date) {
+                whereCondition.created_at.gte = new Date(start_date);
+            }
+            if (end_date) {
+                const endDate = new Date(end_date);
+                endDate.setHours(23, 59, 59, 999);
+                whereCondition.created_at.lte = endDate;
+            }
+        }
+
+        // Status filter
+        if (status) {
+            whereCondition.status = status;
+        }
+
+        // Source filter
+        if (source) {
+            whereCondition.source = source;
+        }
+
+        // Is Indian filter
+        if (is_indian !== undefined) {
+            whereCondition.is_indian = is_indian;
+        }
+
+        // Get total count
+        const total = await this.prisma.lead.count({
+            where: whereCondition
+        });
+
+        // Calculate stats
+        const totalLeads = await this.prisma.lead.count({
+            where: {
+                organisations: {
+                    some: {
+                        id: orgId
+                    }
+                },
+                is_deleted: 0,
+                ...(start_date || end_date ? {
+                    created_at: {
+                        ...(start_date ? { gte: new Date(start_date) } : {}),
+                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
+                    }
+                } : {})
+            }
+        });
+
+        const newLeads = await this.prisma.lead.count({
+            where: {
+                organisations: {
+                    some: {
+                        id: orgId
+                    }
+                },
+                is_deleted: 0,
+                status: 'new',
+                ...(start_date || end_date ? {
+                    created_at: {
+                        ...(start_date ? { gte: new Date(start_date) } : {}),
+                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
+                    }
+                } : {})
+            }
+        });
+
+        const qualifiedLeads = await this.prisma.lead.count({
+            where: {
+                organisations: {
+                    some: {
+                        id: orgId
+                    }
+                },
+                is_deleted: 0,
+                status: 'qualified',
+                ...(start_date || end_date ? {
+                    created_at: {
+                        ...(start_date ? { gte: new Date(start_date) } : {}),
+                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
+                    }
+                } : {})
+            }
+        });
+
+        const junkLeads = await this.prisma.lead.count({
+            where: {
+                organisations: {
+                    some: {
+                        id: orgId
+                    }
+                },
+                is_deleted: 0,
+                status: 'junk',
+                ...(start_date || end_date ? {
+                    created_at: {
+                        ...(start_date ? { gte: new Date(start_date) } : {}),
+                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
+                    }
+                } : {})
+            }
+        });
+
+        // Get leads with related data
+        const leads = await this.prisma.lead.findMany({
+            where: whereCondition,
+            include: {
+                zoho_lead: {
+                    select: {
+                        id: true,
+                        first_name: true,
+                        last_name: true,
+                        email: true,
+                        phone: true,
+                        status: true,
+                        source: true,
+                        disposition: true,
+                        country: true,
+                        state: true,
+                        city: true,
+                        requires_human_action: true,
+                        is_handled_by_human: true,
+                        created_at: true,
+                        updated_at: true
+                    }
+                },
+                calls: {
+                    where: {
+                        is_deleted: 0
+                    },
+                    select: {
+                        id: true,
+                        status: true,
+                        direction: true,
+                        started_at: true,
+                        ended_at: true,
+                        duration: true
+                    },
+                    orderBy: {
+                        started_at: 'desc'
+                    },
+                    take: 1
+                },
+                chats: {
+                    where: {
+                        is_deleted: 0
+                    },
+                    select: {
+                        id: true,
+                        status: true,
+                        created_at: true,
+                        updated_at: true
+                    },
+                    orderBy: {
+                        created_at: 'desc'
+                    },
+                    take: 1
+                }
+            },
+            orderBy: {
+                created_at: 'desc'
+            },
+            skip: (page - 1) * limit,
+            take: limit
+        });
+
+        // Get unique statuses and sources for metadata
+        const statusesResult = await this.prisma.lead.findMany({
+            where: {
+                organisations: {
+                    some: {
+                        id: orgId
+                    }
+                },
+                is_deleted: 0,
+                status: {
+                    not: null
+                }
+            },
+            select: {
+                status: true
+            },
+            distinct: ['status']
+        });
+
+        const sourcesResult = await this.prisma.lead.findMany({
+            where: {
+                organisations: {
+                    some: {
+                        id: orgId
+                    }
+                },
+                is_deleted: 0,
+                source: {
+                    not: null
+                }
+            },
+            select: {
+                source: true
+            },
+            distinct: ['source']
+        });
+
+        // Format as label-value arrays
+        const statuses = statusesResult
+            .filter((item): item is { status: string } => item.status !== null && item.status !== undefined && item.status !== '')
+            .map(item => ({
+                label: item.status.charAt(0).toUpperCase() + item.status.slice(1),
+                value: item.status
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+
+        const sources = sourcesResult
+            .filter((item): item is { source: string } => item.source !== null && item.source !== undefined && item.source !== '')
+            .map(item => ({
+                label: item.source.charAt(0).toUpperCase() + item.source.slice(1),
+                value: item.source
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+
+        return {
+            leads: leads.map(lead => ({
+                id: lead.id,
+                first_name: lead.first_name,
+                last_name: lead.last_name,
+                full_name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || null,
+                email: lead.email,
+                phone_number: lead.phone_number,
+                source: lead.source,
+                status: lead.status,
+                is_indian: lead.is_indian,
+                follow_up_count: lead.follow_up_count,
+                reschedule_count: lead.reschedule_count,
+                last_follow_up: lead.last_follow_up,
+                next_follow_up: lead.next_follow_up,
+                call_active: lead.call_active,
+                created_at: lead.created_at,
+                updated_at: lead.updated_at,
+                zoho_lead: lead.zoho_lead,
+                latest_call: lead.calls[0] || null,
+                latest_chat: lead.chats[0] || null,
+                total_calls: lead.calls.length,
+                total_chats: lead.chats.length
+            })),
+            stats: {
+                total_leads: totalLeads,
+                new_leads: newLeads,
+                qualified_leads: qualifiedLeads,
+                junk_leads: junkLeads
+            },
+            pagination: {
+                current_page: page,
+                per_page: limit,
+                total: total,
+                total_pages: Math.ceil(total / limit)
+            },
+            status: statuses,
+            sources
+        };
+    }
+
+    async getLeadDetails(
+        id_or_slug: string,
+        id_or_phone: string,
+        isSuperAdmin: boolean = false
+    ) {
+        // Find organisation by id or slug
+        const organisation = await this.prisma.organisation.findFirst({
+            where: {
+                OR: [
+                    { id: isNaN(parseInt(id_or_slug)) ? undefined : parseInt(id_or_slug) },
+                    { slug: id_or_slug }
+                ],
+                ...(isSuperAdmin ? {} : { is_deleted: 0, is_disabled: 0 })
+            }
+        });
+
+        if (!organisation) {
+            throw new NotFoundException('Organisation not found');
+        }
+
+        // Determine if id_or_phone is a phone number (exactly 10 digits) or an ID
+        const isPhoneNumber = /^\d{10}$/.test(id_or_phone);
+
+        // Get lead details with all related data
+        const lead = await this.prisma.lead.findFirst({
+            where: {
+                ...(isPhoneNumber
+                    ? { phone_number: id_or_phone }
+                    : { id: parseInt(id_or_phone) }
+                ),
+                organisations: {
+                    some: {
+                        id: organisation.id
+                    }
+                },
+                is_deleted: 0
+            },
+            include: {
+                organisations: {
+                    select: {
+                        id: true,
+                        name: true,
+                        slug: true
+                    }
+                },
+                zoho_lead: {
+                    include: {
+                        lead_owner: true
+                    }
+                },
+                agents: {
+                    select: {
+                        id: true,
+                        name: true,
+                        slug: true,
+                        type: true,
+                        image_url: true
+                    }
+                },
+                calls: {
+                    where: {
+                        is_deleted: 0
+                    },
+                    include: {
+                        agent: {
+                            select: {
+                                id: true,
+                                name: true,
+                                type: true
+                            }
+                        },
+                        costs: {
+                            select: {
+                                amount: true,
+                                type: true
+                            }
+                        }
+                    },
+                    orderBy: {
+                        started_at: 'desc'
+                    }
+                },
+                chats: {
+                    where: {
+                        is_deleted: 0
+                    },
+                    include: {
+                        agent: {
+                            select: {
+                                id: true,
+                                name: true,
+                                type: true
+                            }
+                        }
+                    },
+                    orderBy: {
+                        created_at: 'desc'
+                    }
+                }
+            }
+        });
+
+        if (!lead) {
+            throw new NotFoundException('Lead not found');
+        }
+
+        // Calculate comprehensive statistics
+        const totalCalls = lead.calls.length;
+        const totalChats = lead.chats.length;
+        const totalCallCost = lead.calls.reduce((sum, call) => {
+            return sum + call.costs.reduce((callSum, cost) => callSum + (cost.amount || 0), 0);
+        }, 0);
+        const totalChatCost = lead.chats.reduce((sum, chat) => sum + (chat.total_cost || 0), 0);
+
+        // Call statistics by status
+        const callStats = lead.calls.reduce((stats, call) => {
+            if (!stats[call.status]) {
+                stats[call.status] = 0;
+            }
+            stats[call.status]++;
+            return stats;
+        }, {} as Record<string, number>);
+
+        // Chat statistics by status  
+        const chatStats = lead.chats.reduce((stats, chat) => {
+            if (!stats[chat.status]) {
+                stats[chat.status] = 0;
+            }
+            stats[chat.status]++;
+            return stats;
+        }, {} as Record<string, number>);
+
+        // Latest activity
+        const latestCall = lead.calls[0] || null;
+        const latestChat = lead.chats[0] || null;
+
+        return {
+            // Basic lead info
+            id: lead.id,
+            first_name: lead.first_name,
+            last_name: lead.last_name,
+            full_name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || null,
+            email: lead.email,
+            phone_number: lead.phone_number,
+            source: lead.source,
+            status: lead.status,
+            is_indian: lead.is_indian,
+            follow_up_count: lead.follow_up_count,
+            reschedule_count: lead.reschedule_count,
+            last_follow_up: lead.last_follow_up,
+            next_follow_up: lead.next_follow_up,
+            call_active: lead.call_active,
+            created_at: lead.created_at,
+            updated_at: lead.updated_at,
+
+            // Related data
+            organisations: lead.organisations,
+            zoho_lead: lead.zoho_lead,
+            assigned_agents: lead.agents,
+
+            // Activity data
+            calls: lead.calls.map(call => ({
+                id: call.id,
+                status: call.status,
+                source: call.source,
+                direction: call.direction,
+                from_number: call.from_number,
+                to_number: call.to_number,
+                started_at: call.started_at,
+                ended_at: call.ended_at,
+                duration: call.duration,
+                summary: call.summary,
+                analysis: call.analysis,
+                recording_url: call.recording_url,
+                call_ended_reason: call.call_ended_reason,
+                total_cost: call.total_cost,
+                agent: call.agent,
+                calculated_cost: call.costs.reduce((sum, cost) => sum + (cost.amount || 0), 0)
+            })),
+            chats: lead.chats.map(chat => ({
+                id: chat.id,
+                status: chat.status,
+                source: chat.source,
+                summary: chat.summary,
+                analysis: chat.analysis,
+                prompt_tokens: chat.prompt_tokens,
+                completion_tokens: chat.completion_tokens,
+                total_cost: chat.total_cost,
+                created_at: chat.created_at,
+                updated_at: chat.updated_at,
+                agent: chat.agent
+            })),
+
+            // Statistics
+            stats: {
+                total_calls: totalCalls,
+                total_chats: totalChats,
+                total_interactions: totalCalls + totalChats,
+                total_call_cost: totalCallCost,
+                total_chat_cost: totalChatCost,
+                total_cost: totalCallCost + totalChatCost,
+                call_breakdown: callStats,
+                chat_breakdown: chatStats,
+                latest_activity: {
+                    latest_call: latestCall ? {
+                        id: latestCall.id,
+                        status: latestCall.status,
+                        started_at: latestCall.started_at,
+                        duration: latestCall.duration
+                    } : null,
+                    latest_chat: latestChat ? {
+                        id: latestChat.id,
+                        status: latestChat.status,
+                        created_at: latestChat.created_at,
+                        total_cost: latestChat.total_cost
+                    } : null
+                }
+            }
+        };
+    }
+
+    async getOrganisationPriorityLeads(
+        id_or_slug: string,
+        limit: number = 1000,
+    ) {
+        // Find organisation by id or slug
+        const organisation = await this.prisma.organisation.findFirst({
+            where: {
+                OR: [
+                    { id: isNaN(parseInt(id_or_slug)) ? undefined : parseInt(id_or_slug) },
+                    { slug: id_or_slug }
+                ],
+            },
+        });
+
+        if (!organisation) {
+            throw new NotFoundException('Organisation not found');
+        }
+
+        const currentTime = new Date();
+
+        const leads = await this.prisma.lead.findMany({
+            where: {
+                organisations: {
+                    some: {
+                        id: organisation.id
+                    }
+                },
+                is_deleted: 0,
+                next_follow_up: {
+                    lte: currentTime
+                },
+                call_active: 0
+            },
+            orderBy: {
+                next_follow_up: 'asc'
+            },
+            take: limit,
+            select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                phone_number: true,
+                email: true,
+                status: true,
+                source: true,
+                next_follow_up: true,
+                is_indian: true,
+                reschedule_count: true,
+                created_at: true,
+                updated_at: true,
+                zoho_lead: {
+                    select: {
+                        id: true,
+                        first_name: true,
+                        last_name: true,
+                        email: true,
+                        phone: true,
+                        status: true,
+                        source: true,
+                        disposition: true,
+                        country: true,
+                        state: true,
+                        city: true,
+                        requires_human_action: true,
+                        is_handled_by_human: true,
+                        lead_owner: {
+                            select: {
+                                id: true,
+                                first_name: true,
+                                last_name: true,
+                                email: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        return {
+            data: leads,
+            total: leads.length,
+            organisation: {
+                id: organisation.id,
+                name: organisation.name,
+                slug: organisation.slug
+            }
+        };
+    }
+
+    async updateOrganisation(
+        id_or_slug: string,
+        updateData: {
+            name?: string;
+            slug?: string;
+            chat_credits?: number;
+            call_credits?: number;
+            updated_by_user?: string;
+            active_indian_calls?: number;
+            active_international_calls?: number;
+            available_indian_channels?: number;
+            available_international_channels?: number;
+            expenses?: number;
+            is_disabled?: number;
+            is_deleted?: number;
         },
-      };
+    ) {
+        this.logger.log(`Updating organisation: ${id_or_slug} with data: ${JSON.stringify(updateData)}`);
 
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - success`,
-          data: result,
-        }),
-        methodName,
-      );
+        try {
+            // Find organisation by id or slug
+            this.logger.log(`Searching for organisation to update: ${id_or_slug}`);
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    OR: [
+                        { id: isNaN(parseInt(id_or_slug)) ? undefined : parseInt(id_or_slug) },
+                        { slug: id_or_slug }
+                    ],
+                }
+            });
 
-      return ApiResponse.success(
-        'Active calls decremented successfully',
-        result,
-      );
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error.message,
-        }),
-        methodName,
-      );
+            if (!organisation) {
+                this.logger.error(`Organisation not found for update: ${id_or_slug}`);
+                throw new NotFoundException('Organisation not found');
+            }
 
-      if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
-      ) {
-        throw error;
-      }
-      throw new BadRequestException('Failed to decrement active calls');
+            this.logger.log(`Found organisation for update: ${organisation.name} (ID: ${organisation.id})`);
+
+            // Update organisation
+            this.logger.log(`Executing update for organisation ${organisation.id}`);
+            const updatedOrganisation = await this.prisma.organisation.update({
+                where: { id: organisation.id },
+                data: {
+                    ...updateData,
+                    updated_at: new Date()
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                    chat_credits: true,
+                    call_credits: true,
+                    updated_by_user: true,
+                    active_indian_calls: true,
+                    active_international_calls: true,
+                    available_indian_channels: true,
+                    available_international_channels: true,
+                    expenses: true,
+                    is_disabled: true,
+                    is_deleted: true,
+                    created_at: true,
+                    updated_at: true,
+                }
+            });
+
+            this.logger.log(`Successfully updated organisation: ${organisation.id}`);
+
+            return {
+                message: 'Organisation updated successfully',
+                data: updatedOrganisation
+            };
+
+        } catch (error) {
+            this.logger.error(`Error in updateOrganisation for ${id_or_slug}: ${error.message}`, error.stack);
+            throw error;
+        }
     }
-  }
-
-  async getRemainingCredits(org_id_or_slug: string): Promise<
-    ApiResponse<{
-      conversation_credits: number;
-      message_credits: number;
-      call_credits: number;
-      credits_plan: string;
-      total_credits: number;
-    }>
-  > {
-    const methodName = 'getRemainingCredits';
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - start`,
-        data: { org_id_or_slug },
-      }),
-      methodName,
-    );
-
-    try {
-      // Check if the parameter is a number (ID) or string (slug)
-      const isId = !isNaN(Number(org_id_or_slug));
-      const whereCondition = isId
-        ? { id: Number(org_id_or_slug) }
-        : { slug: org_id_or_slug };
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: {
-          ...whereCondition,
-          is_deleted: 0,
-          is_disabled: 0,
-        },
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          conversation_credits: true,
-          message_credits: true,
-          call_credits: true,
-          credits_plan: true,
-        },
-      });
-
-      if (!organisation) {
-        throw new NotFoundException('Organisation not found');
-      }
-
-      // Calculate total credits based on the credits plan
-      let totalCredits = 0;
-      if (organisation.credits_plan === 'CONVERSATION') {
-        totalCredits =
-          organisation.conversation_credits + organisation.call_credits;
-      } else if (organisation.credits_plan === 'MESSAGE') {
-        totalCredits = organisation.message_credits;
-      }
-
-      const result = {
-        conversation_credits: organisation.conversation_credits,
-        message_credits: organisation.message_credits,
-        call_credits: organisation.call_credits,
-        credits_plan: organisation.credits_plan,
-        total_credits: totalCredits,
-      };
-
-      this.logger.log(
-        JSON.stringify({
-          title: `${methodName} - success`,
-          data: { organisationId: organisation.id, credits: result },
-        }),
-        methodName,
-      );
-
-      return ApiResponse.success(
-        'Organisation credits retrieved successfully',
-        result,
-      );
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error?.message || 'Unknown error',
-          stack: error?.stack,
-        }),
-        methodName,
-      );
-
-      if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
-      ) {
-        throw error;
-      }
-      throw new BadRequestException('Failed to retrieve organisation credits');
-    }
-  }
-
-  async incrementCredits(
-    org_id_or_slug: string,
-    credit_type: 'conversation' | 'message' | 'call',
-    amount = 1,
-  ): Promise<
-    ApiResponse<{
-      conversation_credits: number;
-      message_credits: number;
-      call_credits: number;
-      credits_plan: string;
-      total_credits: number;
-    }>
-  > {
-    const methodName = 'incrementCredits';
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - start`,
-        data: { org_id_or_slug, credit_type, amount },
-      }),
-      methodName,
-    );
-
-    try {
-      if (amount <= 0)
-        throw new BadRequestException('Amount must be a positive number');
-
-      const isId = !isNaN(Number(org_id_or_slug));
-      const whereCondition = isId
-        ? { id: Number(org_id_or_slug) }
-        : { slug: org_id_or_slug };
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: { ...whereCondition, is_deleted: 0, is_disabled: 0 },
-      });
-      if (!organisation) throw new NotFoundException('Organisation not found');
-
-      const field =
-        credit_type === 'conversation'
-          ? 'conversation_credits'
-          : credit_type === 'message'
-            ? 'message_credits'
-            : 'call_credits';
-
-      const current = organisation[field] ?? 0;
-      const newValue = current + amount;
-      const updatedOrganisation = await this.prisma.organisation.update({
-        where: whereCondition,
-        data: { [field]: newValue },
-      });
-
-      // Log credit history
-      await this.creditHistoryService.create({
-        organisation_id: organisation.id,
-        change_amount: amount,
-        change_type: 'increment',
-        change_field: field,
-        prev_value: current,
-        new_value: newValue,
-        reason: `Credits incremented via API - ${credit_type} credits increased by ${amount}`,
-      });
-
-      // Calculate total credits similar to getRemainingCredits
-      let totalCredits = 0;
-      if (updatedOrganisation.credits_plan === 'CONVERSATION') {
-        totalCredits =
-          updatedOrganisation.conversation_credits +
-          updatedOrganisation.call_credits;
-      } else if (updatedOrganisation.credits_plan === 'MESSAGE') {
-        totalCredits = updatedOrganisation.message_credits;
-      }
-
-      const result = {
-        conversation_credits: updatedOrganisation.conversation_credits,
-        message_credits: updatedOrganisation.message_credits,
-        call_credits: updatedOrganisation.call_credits,
-        credits_plan: updatedOrganisation.credits_plan,
-        total_credits: totalCredits,
-      };
-
-      this.logger.log(
-        JSON.stringify({ title: `${methodName} - success`, data: result }),
-        methodName,
-      );
-      return ApiResponse.success('Credits incremented successfully', result);
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error?.message,
-        }),
-        methodName,
-      );
-      if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
-      )
-        throw error;
-      throw new BadRequestException('Failed to increment credits');
-    }
-  }
-
-  async decrementCredits(
-    org_id_or_slug: string,
-    credit_type: 'conversation' | 'message' | 'call',
-    amount = 1,
-  ): Promise<
-    ApiResponse<{
-      conversation_credits: number;
-      message_credits: number;
-      call_credits: number;
-      credits_plan: string;
-      total_credits: number;
-    }>
-  > {
-    const methodName = 'decrementCredits';
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - start`,
-        data: { org_id_or_slug, credit_type, amount },
-      }),
-      methodName,
-    );
-
-    try {
-      if (amount <= 0)
-        throw new BadRequestException('Amount must be a positive number');
-
-      const isId = !isNaN(Number(org_id_or_slug));
-      const whereCondition = isId
-        ? { id: Number(org_id_or_slug) }
-        : { slug: org_id_or_slug };
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: { ...whereCondition, is_deleted: 0, is_disabled: 0 },
-      });
-      if (!organisation) throw new NotFoundException('Organisation not found');
-
-      const field =
-        credit_type === 'conversation'
-          ? 'conversation_credits'
-          : credit_type === 'message'
-            ? 'message_credits'
-            : 'call_credits';
-
-      const current = organisation[field] ?? 0;
-      const newValue = Math.max(0, current - amount);
-
-      const updatedOrganisation = await this.prisma.organisation.update({
-        where: whereCondition,
-        data: { [field]: newValue },
-      });
-
-      // Log credit history
-      await this.creditHistoryService.create({
-        organisation_id: organisation.id,
-        change_amount: amount,
-        change_type: 'decrement',
-        change_field: field,
-        prev_value: current,
-        new_value: newValue,
-        reason: `Credits decremented via API - ${credit_type} credits decreased by ${amount}`,
-      });
-
-      // Calculate total credits similar to getRemainingCredits
-      let totalCredits = 0;
-      if (updatedOrganisation.credits_plan === 'CONVERSATION') {
-        totalCredits =
-          updatedOrganisation.conversation_credits +
-          updatedOrganisation.call_credits;
-      } else if (updatedOrganisation.credits_plan === 'MESSAGE') {
-        totalCredits = updatedOrganisation.message_credits;
-      }
-
-      const result = {
-        conversation_credits: updatedOrganisation.conversation_credits,
-        message_credits: updatedOrganisation.message_credits,
-        call_credits: updatedOrganisation.call_credits,
-        credits_plan: updatedOrganisation.credits_plan,
-        total_credits: totalCredits,
-      };
-
-      this.logger.log(
-        JSON.stringify({ title: `${methodName} - success`, data: result }),
-        methodName,
-      );
-      return ApiResponse.success('Credits decremented successfully', result);
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error?.message,
-        }),
-        methodName,
-      );
-      if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
-      )
-        throw error;
-      throw new BadRequestException('Failed to decrement credits');
-    }
-  }
-
-  async setCredits(
-    org_id_or_slug: string,
-    credit_type: 'conversation' | 'message' | 'call',
-    value: number,
-  ): Promise<
-    ApiResponse<{
-      conversation_credits: number;
-      message_credits: number;
-      call_credits: number;
-      credits_plan: string;
-      total_credits: number;
-    }>
-  > {
-    const methodName = 'setCredits';
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - start`,
-        data: { org_id_or_slug, credit_type, value },
-      }),
-      methodName,
-    );
-
-    try {
-      if (value < 0)
-        throw new BadRequestException('Value must be a non-negative number');
-
-      const isId = !isNaN(Number(org_id_or_slug));
-      const whereCondition = isId
-        ? { id: Number(org_id_or_slug) }
-        : { slug: org_id_or_slug };
-
-      const organisation = await this.prisma.organisation.findFirst({
-        where: { ...whereCondition, is_deleted: 0, is_disabled: 0 },
-      });
-      if (!organisation) throw new NotFoundException('Organisation not found');
-
-      const field =
-        credit_type === 'conversation'
-          ? 'conversation_credits'
-          : credit_type === 'message'
-            ? 'message_credits'
-            : 'call_credits';
-      const current = organisation[field] ?? 0;
-      const changeAmount = value - current;
-
-      const updatedOrganisation = await this.prisma.organisation.update({
-        where: whereCondition,
-        data: { [field]: value },
-      });
-
-      // Log credit history
-      await this.creditHistoryService.create({
-        organisation_id: organisation.id,
-        change_amount: changeAmount,
-        change_type: 'set',
-        change_field: field,
-        prev_value: current,
-        new_value: value,
-        reason: `Credits set via API - ${credit_type} credits set to ${value}`,
-      });
-
-      // Calculate total credits similar to getRemainingCredits
-      let totalCredits = 0;
-      if (updatedOrganisation.credits_plan === 'CONVERSATION') {
-        totalCredits =
-          updatedOrganisation.conversation_credits +
-          updatedOrganisation.call_credits;
-      } else if (updatedOrganisation.credits_plan === 'MESSAGE') {
-        totalCredits = updatedOrganisation.message_credits;
-      }
-
-      const result = {
-        conversation_credits: updatedOrganisation.conversation_credits,
-        message_credits: updatedOrganisation.message_credits,
-        call_credits: updatedOrganisation.call_credits,
-        credits_plan: updatedOrganisation.credits_plan,
-        total_credits: totalCredits,
-      };
-
-      this.logger.log(
-        JSON.stringify({ title: `${methodName} - success`, data: result }),
-        methodName,
-      );
-      return ApiResponse.success('Credits set successfully', result);
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error?.message,
-        }),
-        methodName,
-      );
-      if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
-      )
-        throw error;
-      throw new BadRequestException('Failed to set credits');
-    }
-  }
-
-  /**
-   * Unified PATCH operation for credits. Body should include:
-   * {
-   *   credit_type: 'conversation' | 'message' | 'call',
-   *   operation: 'increment' | 'decrement' | 'set',
-   *   amount?: number,   // for increment/decrement
-   *   value?: number     // for set
-   * }
-   */
-  async patchCredits(
-    org_id_or_slug: string,
-    body: {
-      credit_type: 'conversation' | 'message' | 'call';
-      operation: 'increment' | 'decrement' | 'set';
-      amount?: number;
-      value?: number;
-    },
-  ) {
-    const methodName = 'patchCredits';
-    this.logger.log(
-      JSON.stringify({
-        title: `${methodName} - start`,
-        data: { org_id_or_slug, body },
-      }),
-      methodName,
-    );
-
-    const { credit_type, operation, amount, value } = body;
-
-    try {
-      if (!credit_type || !operation) {
-        throw new BadRequestException('credit_type and operation are required');
-      }
-
-      if (operation === 'increment') {
-        const useAmount = amount ?? 0;
-        return await this.incrementCredits(
-          org_id_or_slug,
-          credit_type,
-          useAmount,
-        );
-      }
-
-      if (operation === 'decrement') {
-        const useAmount = amount ?? 0;
-        return await this.decrementCredits(
-          org_id_or_slug,
-          credit_type,
-          useAmount,
-        );
-      }
-
-      if (operation === 'set') {
-        if (typeof value !== 'number')
-          throw new BadRequestException(
-            'value must be provided for set operation',
-          );
-        return await this.setCredits(org_id_or_slug, credit_type, value);
-      }
-
-      throw new BadRequestException('Invalid operation');
-    } catch (error) {
-      this.logger.error(
-        JSON.stringify({
-          title: `${methodName} - error`,
-          error: error?.message,
-        }),
-        methodName,
-      );
-      if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
-      )
-        throw error;
-      throw new BadRequestException('Failed to patch credits');
-    }
-  }
 }

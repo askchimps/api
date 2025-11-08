@@ -1,179 +1,169 @@
-import {
-  IsString,
-  IsOptional,
-  IsEmail,
-  IsInt,
-  Min,
-  Max,
-  IsDateString,
-  IsIn,
-} from 'class-validator';
-import { Transform } from 'class-transformer';
+import { IsString, IsOptional, IsArray, IsNumber, IsInt, Min, Max, IsDateString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class UpdateZohoLeadOwnerDto {
+    @IsOptional()
+    @IsString()
+    id?: string;
+
+    @IsOptional()
+    @IsString()
+    first_name?: string;
+
+    @IsOptional()
+    @IsString()
+    last_name?: string;
+
+    @IsOptional()
+    @IsString()
+    email?: string;
+
+    @IsOptional()
+    @IsString()
+    phone?: string;
+}
+
+export class UpdateZohoLeadDto {
+    @IsOptional()
+    @IsString()
+    id?: string;
+
+    @IsOptional()
+    @IsString()
+    lead_owner_id?: string;
+
+    @IsOptional()
+    @IsString()
+    first_name?: string;
+
+    @IsOptional()
+    @IsString()
+    last_name?: string;
+
+    @IsOptional()
+    @IsString()
+    email?: string;
+
+    @IsOptional()
+    @IsString()
+    phone?: string;
+
+    @IsOptional()
+    @IsString()
+    status?: string;
+
+    @IsOptional()
+    @IsString()
+    source?: string;
+
+    @IsOptional()
+    @IsString()
+    disposition?: string;
+
+    @IsOptional()
+    @IsString()
+    country?: string;
+
+    @IsOptional()
+    @IsString()
+    state?: string;
+
+    @IsOptional()
+    @IsString()
+    city?: string;
+
+    @IsOptional()
+    @IsInt()
+    @Min(0)
+    @Max(1)
+    @Type(() => Number)
+    requires_human_action?: number;
+
+    @IsOptional()
+    @IsInt()
+    @Min(0)
+    @Max(1)
+    @Type(() => Number)
+    is_handled_by_human?: number;
+}
 
 export class UpdateLeadDto {
-  @IsOptional()
-  @IsString()
-  agent_slug?: string;
+    @IsOptional()
+    @IsString()
+    first_name?: string;
 
-  @IsOptional()
-  @IsString()
-  first_name?: string;
+    @IsOptional()
+    @IsString()
+    last_name?: string;
 
-  @IsOptional()
-  @IsString()
-  last_name?: string;
+    @IsOptional()
+    @IsString()
+    email?: string;
 
-  @IsOptional()
-  @IsEmail()
-  email?: string;
+    @IsOptional()
+    @IsString()
+    phone_number?: string;
 
-  @IsOptional()
-  @IsString()
-  phone_number?: string;
+    @IsOptional()
+    @IsString()
+    source?: string;
 
-  @IsOptional()
-  @IsString()
-  source?: string;
+    @IsOptional()
+    @IsString()
+    status?: string;
 
-  @IsOptional()
-  @IsString()
-  status?: string;
+    @IsOptional()
+    @IsInt()
+    @Min(0)
+    @Max(1)
+    @Type(() => Number)
+    is_indian?: number;
 
-  @Transform(({ value }) => parseInt(value))
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(1)
-  is_indian?: number;
+    @IsOptional()
+    @IsInt()
+    @Min(0)
+    @Type(() => Number)
+    follow_up_count?: number;
 
-  @Transform(({ value }) => parseInt(value))
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(1)
-  remove_follow_up?: number;
+    @IsOptional()
+    @IsInt()
+    @Min(0)
+    @Type(() => Number)
+    reschedule_count?: number;
 
-  @IsOptional()
-  additional_info?: any;
+    @IsOptional()
+    @IsDateString()
+    last_follow_up?: string;
 
-  @IsOptional()
-  logs?: any;
+    @IsOptional()
+    @IsDateString()
+    next_follow_up?: string;
+    
+    @IsOptional()
+    @IsInt()
+    @Min(0)
+    @Max(1)
+    @Type(() => Number)
+    remove_follow_up?: number;
 
-  @Transform(({ value }) => parseInt(value))
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  follow_ups?: number;
+    @IsOptional()
+    @IsInt()
+    @Min(0)
+    @Max(1)
+    @Type(() => Number)
+    call_active?: number;
 
-  // New fields for follow_ups operations
-  @IsOptional()
-  @IsIn(['increment', 'decrement'])
-  follow_ups_operation?: 'increment' | 'decrement';
+    @IsOptional()
+    @IsArray()
+    organisations?: string[];
 
-  @Transform(({ value }) => parseInt(value))
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  follow_ups_value?: number;
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => UpdateZohoLeadOwnerDto)
+    zoho_lead_owner?: UpdateZohoLeadOwnerDto;
 
-  @Transform(({ value }) => parseInt(value))
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  reschedule_count?: number;
-
-  // New fields for reschedule_count operations
-  @IsOptional()
-  @IsIn(['increment', 'decrement'])
-  reschedule_count_operation?: 'increment' | 'decrement';
-
-  @Transform(({ value }) => parseInt(value))
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  reschedule_count_value?: number;
-
-  @IsOptional()
-  @IsDateString()
-  next_follow_up?: string;
-
-  @Transform(({ value }) => parseInt(value))
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(1)
-  in_process?: number;
-
-  // Zoho fields
-  @IsOptional()
-  @IsString()
-  zoho_id?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_lead_owner?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_lead_owner_id?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_lead_owner_first_name?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_lead_owner_last_name?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_lead_owner_phone?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_first_name?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_last_name?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_mobile?: string;
-
-  @IsOptional()
-  @IsEmail()
-  zoho_email?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_status?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_lead_disposition?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_lead_source?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_country?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_state?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_city?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_street?: string;
-
-  @IsOptional()
-  @IsString()
-  zoho_description?: string;
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => UpdateZohoLeadDto)
+    zoho_lead?: UpdateZohoLeadDto;
 }

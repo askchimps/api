@@ -1,292 +1,213 @@
-import {
-  Controller,
-  Get,
-  Param,
-  Query,
-  Req,
-  UseGuards,
-  Post,
-  Patch,
-  Body,
-} from '@nestjs/common';
+import { Controller, Get, Put, UseGuards, Req, Param, Query, Body } from '@nestjs/common';
+import { JwtAuthGuard } from '../../guards/jwt.guard';
 import { OrganisationService } from './organisation.service';
-import type { AuthRequest } from 'types/auth-request';
-import { JwtAuthGuard } from '@guards/jwt.guard';
-import { RoleGuard } from '@guards/role.guard';
+import type { AuthRequest } from '../../types/auth-request';
+import {
+    DateRangeQueryDto,
+    ChatsQueryDto,
+    CallsQueryDto,
+    LeadsQueryDto,
+    PriorityLeadsQueryDto,
+    UpdateOrganisationDto,
+    OrganisationParamDto,
+    OrganisationDetailsParamDto,
+    OrganisationLeadDetailsParamDto,
+    AgentsPaginationQueryDto
+} from './dto';
 import { HeaderAuthGuard } from '@guards/header-auth.guard';
-import { Role } from '@decorators/role.decorator';
-import { ROLE } from '@prisma/client';
-import {
-  GetConversationsDto,
-  ProcessedConversationFilters,
-} from './dto/get-conversations.dto';
-import { GetLeadsDto, ProcessedLeadFilters } from './dto/get-leads.dto';
-import {
-  GetAnalyticsDto,
-  ProcessedAnalyticsFilters,
-} from './dto/get-analytics.dto';
-import { PatchCreditsDto } from './dto/patch-credits.dto';
-import { ManageCallsDto } from './dto/manage-calls.dto';
+import { RoleGuard } from '@guards/role.guard';
 
 @Controller({
-  path: 'organisation',
-  version: '1',
+    path: 'organisation',
+    version: '1',
 })
 export class OrganisationController {
-  constructor(private readonly organisationService: OrganisationService) {}
+    constructor(private readonly organisationService: OrganisationService) { }
 
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Get('all')
-  async getAll(@Req() req: AuthRequest) {
-    return this.organisationService.getAll(req.user);
-  }
+    @UseGuards(JwtAuthGuard, RoleGuard)
+    @Get()
+    async getAllOrganisations(@Req() req: AuthRequest) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        const userId = req.user?.id;
+        return this.organisationService.getAllOrganisations(isSuperAdmin, userId);
+    }
 
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
-  @Get(':org_id_or_slug')
-  async getOne(
-    @Req() req: AuthRequest,
-    @Param('org_id_or_slug') org_id_or_slug: string,
-  ) {
-    return this.organisationService.getOne(req.user, org_id_or_slug);
-  }
+    @UseGuards(HeaderAuthGuard)
+    @Get(':id_or_slug')
+    async getOrganisationDetails(
+        @Param('id_or_slug') id_or_slug: string,
+    ) {
+        return this.organisationService.getOrganisationDetails(
+            id_or_slug,
+        );
+    }
 
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
-  @Get(':org_id_or_slug/overview')
-  async getOverview(
-    @Req() req: AuthRequest,
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-  ) {
-    const parsedStartDate = startDate ? new Date(startDate) : undefined;
-    const parsedEndDate = endDate ? new Date(endDate) : undefined;
+    @UseGuards(HeaderAuthGuard)
+    @Put(':id_or_slug')
+    async updateOrganisation(
+        @Param() paramDto: OrganisationParamDto,
+        @Body() updateOrganisationDto: UpdateOrganisationDto
+    ) {
+        return this.organisationService.updateOrganisation(
+            paramDto.id_or_slug,
+            updateOrganisationDto,
+        );
+    }
 
-    return this.organisationService.getOverview(
-      req.user,
-      org_id_or_slug,
-      parsedStartDate,
-      parsedEndDate,
-    );
-  }
+    @UseGuards(JwtAuthGuard)
+    @Get(':id_or_slug/agents')
+    async getOrganisationAgents(
+        @Param() paramDto: OrganisationParamDto,
+        @Req() req: AuthRequest,
+        @Query() paginationDto: AgentsPaginationQueryDto
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.getOrganisationAgents(
+            paramDto.id_or_slug,
+            {
+                page: paginationDto.page || 1,
+                limit: paginationDto.limit || 1000,
+            },
+            isSuperAdmin
+        );
+    }
 
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
-  @Get(':org_id_or_slug/conversations')
-  async getAllConversations(
-    @Req() req: AuthRequest,
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Query() queryParams: GetConversationsDto,
-  ) {
-    // Convert DTO to processed filters with proper date parsing
-    const processedFilters: ProcessedConversationFilters = {
-      page: queryParams.page ?? 1,
-      limit: queryParams.limit ?? 10,
-      source: queryParams.source,
-      agent_slug_or_id: queryParams.agent,
-      type: queryParams.type,
-      startDate: queryParams.startDate
-        ? new Date(queryParams.startDate)
-        : undefined,
-      endDate: queryParams.endDate ? new Date(queryParams.endDate) : undefined,
-    };
+    @UseGuards(JwtAuthGuard)
+    @Get(':id_or_slug/overview')
+    async getOrganisationOverview(
+        @Param() paramDto: OrganisationParamDto,
+        @Req() req: AuthRequest,
+        @Query() dateRangeDto: DateRangeQueryDto
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.getOrganisationOverview(
+            paramDto.id_or_slug,
+            dateRangeDto.startDate,
+            dateRangeDto.endDate,
+            isSuperAdmin
+        );
+    }
 
-    return this.organisationService.getAllConversations(
-      req.user,
-      org_id_or_slug,
-      processedFilters,
-    );
-  }
+    @UseGuards(JwtAuthGuard)
+    @Get(':id_or_slug/chats')
+    async getOrganisationChats(
+        @Param() paramDto: OrganisationParamDto,
+        @Req() req: AuthRequest,
+        @Query() chatsQueryDto: ChatsQueryDto
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.getOrganisationChats(
+            paramDto.id_or_slug,
+            {
+                startDate: chatsQueryDto.startDate,
+                endDate: chatsQueryDto.endDate,
+                status: chatsQueryDto.status,
+                source: chatsQueryDto.source,
+                page: chatsQueryDto.page || 1,
+                limit: chatsQueryDto.limit || 1000,
+            },
+            isSuperAdmin
+        );
+    }
 
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
-  @Get(':org_id_or_slug/conversations/:conversation_id_or_name')
-  async getConversationDetails(
-    @Req() req: AuthRequest,
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Param('conversation_id_or_name') conversation_id_or_name: string,
-  ) {
-    return this.organisationService.getConversationDetails(
-      req.user,
-      org_id_or_slug,
-      conversation_id_or_name,
-    );
-  }
+    @UseGuards(JwtAuthGuard)
+    @Get(':id_or_slug/chat/:id')
+    async getChatDetails(
+        @Param() paramDto: OrganisationDetailsParamDto,
+        @Req() req: AuthRequest
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.getChatDetails(
+            paramDto.id_or_slug,
+            paramDto.id,
+            isSuperAdmin
+        );
+    }
 
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
-  @Get(':org_id_or_slug/leads')
-  async getAllLeads(
-    @Req() req: AuthRequest,
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Query() queryParams: GetLeadsDto,
-  ) {
-    // Convert DTO to processed filters with proper date parsing
-    const processedFilters: ProcessedLeadFilters = {
-      page: queryParams.page ?? 1,
-      limit: queryParams.limit ?? 10,
-      source: queryParams.source,
-      status: queryParams.status,
-      agent_slug_or_id: queryParams.agent,
-      search: queryParams.search,
-      startDate: queryParams.startDate
-        ? new Date(queryParams.startDate)
-        : undefined,
-      endDate: queryParams.endDate ? new Date(queryParams.endDate) : undefined,
-    };
+    @UseGuards(JwtAuthGuard)
+    @Get(':id_or_slug/calls')
+    async getOrganisationCalls(
+        @Param() paramDto: OrganisationParamDto,
+        @Req() req: AuthRequest,
+        @Query() callsQueryDto: CallsQueryDto
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.getOrganisationCalls(
+            paramDto.id_or_slug,
+            {
+                start_date: callsQueryDto.start_date,
+                end_date: callsQueryDto.end_date,
+                status: callsQueryDto.status,
+                direction: callsQueryDto.direction,
+                source: callsQueryDto.source,
+                page: callsQueryDto.page || 1,
+                limit: callsQueryDto.limit || 1000,
+            },
+            isSuperAdmin
+        );
+    }
 
-    return this.organisationService.getAllLeads(
-      req.user,
-      org_id_or_slug,
-      processedFilters,
-    );
-  }
+    @UseGuards(JwtAuthGuard)
+    @Get(':id_or_slug/call/:id')
+    async getCallDetails(
+        @Param('id_or_slug') id_or_slug: string,
+        @Param('id') id: string,
+        @Req() req: AuthRequest
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.getCallDetails(
+            id_or_slug,
+            parseInt(id),
+            isSuperAdmin
+        );
+    }
 
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
-  @Get(':org_id_or_slug/lead/:lead_id')
-  async getLeadDetails(
-    @Req() req: AuthRequest,
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Param('lead_id') lead_id: string,
-  ) {
-    return this.organisationService.getLeadDetails(
-      req.user,
-      org_id_or_slug,
-      lead_id,
-    );
-  }
+    @UseGuards(JwtAuthGuard)
+    @Get(':id_or_slug/leads')
+    async getOrganisationLeads(
+        @Param() paramDto: OrganisationParamDto,
+        @Req() req: AuthRequest,
+        @Query() leadsQueryDto: LeadsQueryDto
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.getOrganisationLeads(
+            paramDto.id_or_slug,
+            {
+                start_date: leadsQueryDto.start_date,
+                end_date: leadsQueryDto.end_date,
+                status: leadsQueryDto.status,
+                source: leadsQueryDto.source,
+                is_indian: leadsQueryDto.is_indian,
+                page: leadsQueryDto.page || 1,
+                limit: leadsQueryDto.limit || 1000,
+            },
+            isSuperAdmin
+        );
+    }
 
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
-  @Get(':org_id_or_slug/analytics')
-  async getAnalytics(
-    @Req() req: AuthRequest,
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Query() queryParams: GetAnalyticsDto,
-  ) {
-    // Convert DTO to processed filters with proper date parsing
-    const processedFilters: ProcessedAnalyticsFilters = {
-      agent_slug_or_id: queryParams.agent,
-      source: queryParams.source,
-      type: queryParams.type,
-      startDate: queryParams.startDate
-        ? new Date(queryParams.startDate)
-        : undefined,
-      endDate: queryParams.endDate ? new Date(queryParams.endDate) : undefined,
-    };
+    @UseGuards(HeaderAuthGuard)
+    @Get(':id_or_slug/leads/priority')
+    async getOrganisationPriorityLeads(
+        @Param() paramDto: OrganisationParamDto,
+        @Query() priorityQueryDto: PriorityLeadsQueryDto
+    ) {
+        return this.organisationService.getOrganisationPriorityLeads(
+            paramDto.id_or_slug,
+            priorityQueryDto.limit || 1000,
+        );
+    }
 
-    return this.organisationService.getAnalytics(
-      req.user,
-      org_id_or_slug,
-      processedFilters,
-    );
-  }
-
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Role(ROLE.OWNER, ROLE.ADMIN, ROLE.USER)
-  @Get(':org_id_or_slug/agents')
-  async getAllAgents(
-    @Req() req: AuthRequest,
-    @Param('org_id_or_slug') org_id_or_slug: string,
-  ) {
-    return this.organisationService.getAllAgents(req.user, org_id_or_slug);
-  }
-
-  // Channel Management APIs - Header Auth Protected Only
-  @UseGuards(HeaderAuthGuard)
-  @Get(':org_id_or_slug/channels/available')
-  async getAvailableChannels(@Param('org_id_or_slug') org_id_or_slug: string) {
-    return this.organisationService.getAvailableChannels(org_id_or_slug);
-  }
-
-  @UseGuards(HeaderAuthGuard)
-  @Post(':org_id_or_slug/calls/:call_type/increment')
-  async incrementActiveCalls(
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Param('call_type') call_type: 'indian' | 'international',
-    @Body() body: ManageCallsDto,
-  ) {
-    return this.organisationService.incrementActiveCalls(
-      org_id_or_slug,
-      call_type,
-      body.lead_id,
-      body.amount || 1,
-    );
-  }
-
-  @UseGuards(HeaderAuthGuard)
-  @Post(':org_id_or_slug/calls/:call_type/decrement')
-  async decrementActiveCalls(
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Param('call_type') call_type: 'indian' | 'international',
-    @Body() body: ManageCallsDto,
-  ) {
-    return this.organisationService.decrementActiveCalls(
-      org_id_or_slug,
-      call_type,
-      body.lead_id,
-      body.amount || 1,
-    );
-  }
-
-  @UseGuards(HeaderAuthGuard)
-  @Get(':org_id_or_slug/credits')
-  async getRemainingCredits(@Param('org_id_or_slug') org_id_or_slug: string) {
-    return this.organisationService.getRemainingCredits(org_id_or_slug);
-  }
-
-  // Unified credits PATCH endpoint (header auth protected)
-  @UseGuards(HeaderAuthGuard)
-  @Patch(':org_id_or_slug/credits')
-  async patchCredits(
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Body() body: PatchCreditsDto,
-  ) {
-    return this.organisationService.patchCredits(org_id_or_slug, body as any);
-  }
-
-  // Credit management - Header Auth Protected
-  @UseGuards(HeaderAuthGuard)
-  @Post(':org_id_or_slug/credits/:credit_type/increment')
-  async incrementCredits(
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Param('credit_type') credit_type: 'conversation' | 'message' | 'call',
-    @Body('amount') amount?: number,
-  ) {
-    return this.organisationService.incrementCredits(
-      org_id_or_slug,
-      credit_type,
-      amount ?? 1,
-    );
-  }
-
-  @UseGuards(HeaderAuthGuard)
-  @Post(':org_id_or_slug/credits/:credit_type/decrement')
-  async decrementCredits(
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Param('credit_type') credit_type: 'conversation' | 'message' | 'call',
-    @Body('amount') amount?: number,
-  ) {
-    return this.organisationService.decrementCredits(
-      org_id_or_slug,
-      credit_type,
-      amount ?? 1,
-    );
-  }
-
-  @UseGuards(HeaderAuthGuard)
-  @Patch(':org_id_or_slug/credits/:credit_type')
-  async setCredits(
-    @Param('org_id_or_slug') org_id_or_slug: string,
-    @Param('credit_type') credit_type: 'conversation' | 'message' | 'call',
-    @Body('value') value: number,
-  ) {
-    return this.organisationService.setCredits(
-      org_id_or_slug,
-      credit_type,
-      value,
-    );
-  }
+    @UseGuards(JwtAuthGuard)
+    @Get(':id_or_slug/lead/:id_or_phone')
+    async getLeadDetails(
+        @Param() paramDto: OrganisationLeadDetailsParamDto,
+        @Req() req: AuthRequest
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.getLeadDetails(
+            paramDto.id_or_slug,
+            paramDto.id_or_phone,
+            isSuperAdmin
+        );
+    }
 }

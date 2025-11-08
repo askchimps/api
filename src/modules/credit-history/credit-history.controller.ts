@@ -1,39 +1,70 @@
-import {
-  Controller,
-  Get,
-  Param,
-  Query,
-  ParseIntPipe,
-  UseGuards,
-  Req,
-} from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, UseGuards, Param, Query, Body } from '@nestjs/common';
+import { HeaderAuthGuard } from '../../guards/header-auth.guard';
 import { CreditHistoryService } from './credit-history.service';
-import { GetCreditHistoryQueryDto } from './dto/get-credit-history.dto';
-import { JwtAuthGuard } from '@guards/jwt.guard';
-import { RoleGuard } from '@guards/role.guard';
-import { Role } from '@decorators/role.decorator';
-import { ROLE } from '@prisma/client';
-import type { AuthRequest } from 'types/auth-request';
+import {
+    CreateSingleCreditHistoryDto,
+    CreateBulkCreditHistoryDto,
+    UpdateCreditHistoryDto,
+    GetCreditHistoryQueryDto,
+    CreditHistoryParamDto
+} from './dto';
 
-@Controller('credit-history')
-@UseGuards(JwtAuthGuard, RoleGuard)
-@Role(ROLE.USER) // Any authenticated user can view their organization's credit history
+@Controller({
+    path: 'credit-history',
+    version: '1',
+})
+@UseGuards(HeaderAuthGuard)
 export class CreditHistoryController {
-  constructor(private readonly creditHistoryService: CreditHistoryService) {}
+    constructor(private readonly creditHistoryService: CreditHistoryService) { }
 
-  @Get()
-  async findAll(
-    @Req() req: AuthRequest,
-    @Query() query: GetCreditHistoryQueryDto,
-  ) {
-    return this.creditHistoryService.findAll(req.user, query);
-  }
+    @Get()
+    async getAllCreditHistory(
+        @Query() query: GetCreditHistoryQueryDto
+    ) {
+        return this.creditHistoryService.getAllCreditHistory({
+            page: query.page || 1,
+            limit: query.limit || 1000,
+            org: query.org,
+            change_type: query.change_type,
+            change_field: query.change_field,
+            start_date: query.start_date,
+            end_date: query.end_date
+        });
+    }
 
-  @Get(':id')
-  async findOne(
-    @Req() req: AuthRequest,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.creditHistoryService.findOne(req.user, id);
-  }
+    @Get(':id')
+    async getCreditHistoryById(
+        @Param() params: CreditHistoryParamDto
+    ) {
+        return this.creditHistoryService.getCreditHistoryById(parseInt(params.id));
+    }
+
+    @Post('single')
+    async createSingleCreditHistory(
+        @Body() createCreditHistoryDto: CreateSingleCreditHistoryDto
+    ) {
+        return this.creditHistoryService.createSingleCreditHistory(createCreditHistoryDto);
+    }
+
+    @Post('bulk')
+    async createBulkCreditHistory(
+        @Body() createBulkCreditHistoryDto: CreateBulkCreditHistoryDto
+    ) {
+        return this.creditHistoryService.createBulkCreditHistory(createBulkCreditHistoryDto);
+    }
+
+    @Put(':id')
+    async updateCreditHistory(
+        @Param() params: CreditHistoryParamDto,
+        @Body() updateCreditHistoryDto: UpdateCreditHistoryDto
+    ) {
+        return this.creditHistoryService.updateCreditHistory(parseInt(params.id), updateCreditHistoryDto);
+    }
+
+    @Delete(':id')
+    async deleteCreditHistory(
+        @Param() params: CreditHistoryParamDto
+    ) {
+        return this.creditHistoryService.deleteCreditHistory(parseInt(params.id));
+    }
 }

@@ -15,16 +15,6 @@ enum ROLE {
   USER
 }
 
-enum CREDITS_PLAN {
-  CONVERSATION
-  MESSAGE
-}
-
-enum CONVERSATION_TYPE {
-  CHAT
-  CALL
-}
-
 enum COST_TYPE {
   STT
   LLM
@@ -33,111 +23,119 @@ enum COST_TYPE {
   MISC
 }
 
+enum AGENT_TYPE {
+  CHAT
+  CALL
+  HYBRID
+}
+
+enum CHAT_SOURCE {
+  WHATSAPP
+  INSTAGRAM
+}
+
+enum CALL_SOURCE {
+  AUTOMATION
+  WEBSITE
+  MANUAL
+}
+
 model User {
-  id             String   @id
+  id             String  @id
   name           String
-  email          String   @unique
-  phone_number   String?  @unique
-  is_super_admin Int      @default(0)
-  is_disabled    Int      @default(0)
-  is_deleted     Int      @default(0)
-  created_at     DateTime @default(now())
-  updated_at     DateTime @default(now()) @updatedAt
+  email          String  @unique
+  phone_number   String? @unique
+  is_super_admin Int     @default(0)
+
+  is_disabled Int      @default(0)
+  is_deleted  Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now()) @updatedAt
 
   user_organisations UserOrganisation[]
+
+  @@index([email])
+  @@index([phone_number])
+  @@index([is_deleted, is_disabled])
 }
 
 model Organisation {
-  id                                 Int          @id @default(autoincrement())
-  name                               String
-  slug                               String       @unique
-  conversation_credits               Float        @default(0)
-  message_credits                    Float        @default(0)
-  call_credits                       Float        @default(0)
-  credits_plan                       CREDITS_PLAN @default(CONVERSATION)
-  is_disabled                        Int          @default(0)
-  is_deleted                         Int          @default(0)
-  created_at                         DateTime     @default(now())
-  updated_at                         DateTime     @default(now()) @updatedAt
-  updated_by_user                    String
-  active_indian_calls                Int          @default(0)
-  active_indian_call_lead_ids        String[]     @default([])
-  active_international_calls         Int          @default(0)
-  active_international_call_lead_ids String[]     @default([])
-  available_indian_channels          Int          @default(1)
-  available_international_channels   Int          @default(1)
-  income                             Float        @default(0)
-  expenses                           Float        @default(0)
+  id                               Int    @id @default(autoincrement())
+  name                             String
+  slug                             String @unique
+  chat_credits                     Float  @default(0)
+  call_credits                     Float  @default(0)
+  updated_by_user                  String
+  active_indian_calls              Int    @default(0)
+  active_international_calls       Int    @default(0)
+  available_indian_channels        Int    @default(1)
+  available_international_channels Int    @default(1)
+  expenses                         Float  @default(0)
+
+  is_disabled Int      @default(0)
+  is_deleted  Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now()) @updatedAt
 
   user_organisations UserOrganisation[]
   agents             Agent[]
-  conversations      Conversation[]
   messages           Message[]
   leads              Lead[]
-  payments           Payment[]
   costs              Cost[]
   credit_history     CreditHistory[]
-  test_calls         TestCall[]
-}
+  calls              Call[]
+  chats              Chat[]
 
-model TestCall {
-  id              Int      @id @default(autoincrement())
-  organisation_id Int
-  first_name      String
-  last_name       String
-  phone_number    String
-  recording_url   String?  @db.Text
-  call_duration   Float?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @default(now()) @updatedAt
-  total_cost      Float?
-
-  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
-  costs        Cost[]
+  @@index([slug])
+  @@index([is_deleted, is_disabled])
 }
 
 model UserOrganisation {
-  id              Int      @id @default(autoincrement())
+  id              Int    @id @default(autoincrement())
   user_id         String
   organisation_id Int
-  role            ROLE     @default(USER)
-  created_at      DateTime @default(now())
-  updated_at      DateTime @default(now()) @updatedAt
+  role            ROLE   @default(USER)
 
-  user         User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
-}
+  is_disabled Int      @default(0)
+  is_deleted  Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now()) @updatedAt
 
-model Payment {
-  id              Int      @id @default(autoincrement())
-  organisation_id Int
-  amount          Int
-  currency        String
-  details         String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @default(now()) @updatedAt
+  user         User         @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
 
-  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
+  @@unique([user_id, organisation_id])
+  @@index([organisation_id, role])
+  @@index([user_id, is_deleted])
 }
 
 model Cost {
   id              Int       @id @default(autoincrement())
   organisation_id Int
-  conversation_id Int?
-  test_call_id    Int?
+  chat_id         Int?
+  call_id         Int?
+  message_id      Int?
   type            COST_TYPE
   amount          Float
   summary         String?
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @default(now()) @updatedAt
 
-  organisation Organisation  @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
-  conversation Conversation? @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  test_call    TestCall?     @relation(fields: [test_call_id], references: [id])
+  is_deleted Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
+  chat         Chat?        @relation(fields: [chat_id], references: [id], onDelete: Restrict)
+  call         Call?        @relation(fields: [call_id], references: [id], onDelete: Restrict)
+  message      Message?     @relation(fields: [message_id], references: [id], onDelete: Restrict)
+
+  @@index([organisation_id, created_at])
+  @@index([type, created_at])
+  @@index([call_id])
+  @@index([chat_id])
 }
 
 model CreditHistory {
-  id              Int      @id @default(autoincrement())
+  id              Int    @id @default(autoincrement())
   organisation_id Int
   change_amount   Float
   change_type     String
@@ -145,37 +143,98 @@ model CreditHistory {
   prev_value      Float
   new_value       Float
   reason          String
-  created_at      DateTime @default(now())
-  updated_at      DateTime @default(now()) @updatedAt
 
-  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
+  is_deleted Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
+
+  @@index([organisation_id, created_at])
+  @@index([change_type, created_at])
 }
 
 model Agent {
-  id              Int      @id @default(autoincrement())
+  id              Int        @id @default(autoincrement())
   name            String
-  slug            String   @unique
-  phone_number    String?  @unique
+  slug            String     @unique
+  phone_number    String?    @unique
   organisation_id Int
-  base_prompt     String   @db.Text
+  base_prompt     String     @db.Text
   image_url       String?
-  initial_prompt  String?  @db.Text
-  analysis_prompt String?  @db.Text
+  type            AGENT_TYPE @default(CALL)
+  assistant_id    String?
+  initial_prompt  String?    @db.Text
+  analysis_prompt String?    @db.Text
+
   is_disabled     Int      @default(0)
   is_deleted      Int      @default(0)
   created_at      DateTime @default(now())
   updated_at      DateTime @default(now()) @updatedAt
   updated_by_user String
 
-  organisation  Organisation   @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
-  conversations Conversation[]
-  messages      Message[]
-  leads         Lead[]
+  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
+  messages     Message[]
+  leads        Lead[]
+  calls        Call[]
+  chats        Chat[]
+
+  @@unique([slug, organisation_id])
+  @@index([slug])
+  @@index([organisation_id, is_deleted])
+  @@index([phone_number])
+}
+
+model ZohoLeadOwner {
+  id         String  @id
+  first_name String?
+  last_name  String?
+  email      String?
+  phone      String?
+
+  is_deleted Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  zoho_leads ZohoLead[]
+
+  @@index([email])
+  @@index([phone])
+}
+
+model ZohoLead {
+  id                    String  @id
+  lead_id               Int     @unique
+  lead_owner_id         String
+  first_name            String?
+  last_name             String?
+  email                 String?
+  phone                 String?
+  status                String?
+  source                String?
+  disposition           String?
+  country               String?
+  state                 String?
+  city                  String?
+  requires_human_action Int?    @default(0)
+  is_handled_by_human   Int?    @default(0)
+
+  is_deleted Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  lead       Lead          @relation(fields: [lead_id], references: [id], onDelete: Restrict)
+  lead_owner ZohoLeadOwner @relation(fields: [lead_owner_id], references: [id], onDelete: Restrict)
+
+  @@index([lead_owner_id])
+  @@index([status])
+  @@index([requires_human_action])
+  @@index([email])
+  @@index([phone])
 }
 
 model Lead {
   id               Int       @id @default(autoincrement())
-  organisation_id  Int
   first_name       String?
   last_name        String?
   email            String?
@@ -183,101 +242,121 @@ model Lead {
   source           String?
   status           String?
   is_indian        Int       @default(0)
-  additional_info  Json?
-  logs             Json?
-  follow_ups       Int       @default(0)
+  follow_up_count  Int       @default(0)
   reschedule_count Int       @default(0)
-  created_at       DateTime  @default(now())
-  updated_at       DateTime  @default(now()) @updatedAt
+  last_follow_up   DateTime?
   next_follow_up   DateTime?
-  in_process       Int       @default(0)
+  call_active      Int       @default(0)
 
-  zoho_id                    String? @unique
-  zoho_lead_owner            String?
-  zoho_lead_owner_id         String?
-  zoho_lead_owner_first_name String?
-  zoho_lead_owner_last_name  String?
-  zoho_lead_owner_phone      String?
-  zoho_first_name            String?
-  zoho_last_name             String?
-  zoho_mobile                String?
-  zoho_email                 String?
-  zoho_status                String?
-  zoho_lead_disposition      String?
-  zoho_lead_source           String?
-  zoho_country               String?
-  zoho_state                 String?
-  zoho_city                  String?
-  zoho_street                String?
-  zoho_description           String?
+  is_deleted Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
 
-  organisation  Organisation   @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
+  organisations Organisation[]
   agents        Agent[]
-  conversations Conversation[]
+  zoho_lead     ZohoLead?
+  calls         Call[]
+  chats         Chat[]
+
+  @@index([phone_number])
+  @@index([next_follow_up])
+  @@index([status, is_deleted])
+  @@index([call_active])
+  @@index([email])
+  @@index([is_indian])
 }
 
-model Conversation {
-  id                Int               @id @default(autoincrement())
-  name              String
-  type              CONVERSATION_TYPE @default(CHAT)
+model Call {
+  id                Int         @id @default(autoincrement())
   organisation_id   Int
   agent_id          Int
-  source            String
-  lead_id           Int?
-  summary           String?           @db.Text
-  analysis          String?           @db.Text
-  recording_url     String?           @db.Text
-  call_ended_reason String?
+  lead_id           Int
+  status            String
+  source            CALL_SOURCE
+  direction         String
+  from_number       String
+  to_number         String
+  started_at        DateTime
+  ended_at          DateTime?
   duration          Float?
-  prompt_tokens     Int               @default(0)
-  completion_tokens Int               @default(0)
-  is_disabled       Int               @default(0)
-  is_deleted        Int               @default(0)
-  created_at        DateTime          @default(now())
-  updated_at        DateTime          @default(now()) @updatedAt
+  summary           String?     @db.Text
+  analysis          String?     @db.Text
+  recording_url     String?     @db.Text
+  call_ended_reason String?
   total_cost        Float?
 
-  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
-  agent        Agent        @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  is_deleted Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
+  agent        Agent        @relation(fields: [agent_id], references: [id], onDelete: Restrict)
+  lead         Lead         @relation(fields: [lead_id], references: [id], onDelete: Restrict)
   messages     Message[]
-  lead         Lead?        @relation(fields: [lead_id], references: [id], onDelete: Cascade)
-  topics       Topic[]
+  costs        Cost[]
+
+  @@index([started_at])
+  @@index([organisation_id, started_at])
+  @@index([agent_id, started_at])
+  @@index([lead_id, started_at])
+  @@index([status, is_deleted])
+  @@index([direction])
+}
+
+model Chat {
+  id                Int         @id @default(autoincrement())
+  organisation_id   Int
+  agent_id          Int
+  lead_id           Int?
+  source            CHAT_SOURCE
+  status            String
+  summary           String?     @db.Text
+  analysis          String?     @db.Text
+  prompt_tokens     Int         @default(0)
+  completion_tokens Int         @default(0)
+  total_cost        Float?
+
+  is_deleted Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
+  agent        Agent        @relation(fields: [agent_id], references: [id], onDelete: Restrict)
+  lead         Lead?        @relation(fields: [lead_id], references: [id], onDelete: Restrict)
+  messages     Message[]
   costs        Cost[]
 
   @@index([organisation_id, created_at])
-  @@index([organisation_id, agent_id, created_at])
+  @@index([agent_id, created_at])
+  @@index([lead_id, created_at])
+  @@index([source, created_at])
+  @@index([status, is_deleted])
 }
 
 model Message {
-  id                Int      @id @default(autoincrement())
+  id                Int    @id @default(autoincrement())
   organisation_id   Int
   agent_id          Int
-  conversation_id   Int
+  call_id           Int?
+  chat_id           Int?
   role              String
   content           String
-  prompt_tokens     Int      @default(0)
-  completion_tokens Int      @default(0)
-  is_disabled       Int      @default(0)
-  is_deleted        Int      @default(0)
-  created_at        DateTime @default(now())
-  updated_at        DateTime @default(now()) @updatedAt
+  prompt_tokens     Int    @default(0)
+  completion_tokens Int    @default(0)
+  total_cost        Float?
 
-  agent        Agent        @relation(fields: [agent_id], references: [id], onDelete: Cascade)
-  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Cascade)
+  is_deleted Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
 
-  @@index([organisation_id, created_at, role])
-  @@index([organisation_id, agent_id, created_at, role])
-}
+  agent        Agent        @relation(fields: [agent_id], references: [id], onDelete: Restrict)
+  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
+  call         Call?        @relation(fields: [call_id], references: [id], onDelete: Restrict)
+  chat         Chat?        @relation(fields: [chat_id], references: [id], onDelete: Restrict)
+  costs        Cost[]
 
-model Topic {
-  id          Int      @id @default(autoincrement())
-  name        String
-  description String?
-  is_disabled Int      @default(0)
-  is_deleted  Int      @default(0)
-  created_at  DateTime @default(now())
-  updated_at  DateTime @default(now()) @updatedAt
-
-  conversations Conversation[]
+  @@index([call_id, created_at])
+  @@index([chat_id, created_at])
+  @@index([organisation_id, created_at])
+  @@index([role])
 }
