@@ -19,7 +19,6 @@ async function seed() {
     await prisma.user.deleteMany({});
 
     console.log('✅ Database cleaned!');
-    console.log('🌱 Creating users...');
 
     const users = [
         {
@@ -50,9 +49,6 @@ async function seed() {
             is_deleted: 0
         }
     ];
-
-    console.log('👤 Creating users...');
-    await prisma.user.createMany({ data: users });
 
     console.log('👤 Creating users...');
     await prisma.user.createMany({ data: users });
@@ -121,6 +117,7 @@ async function seed() {
             data: {
                 name: 'Magppie - Outbound Sales Pre Qualifier',
                 slug: 'askchimps-magppie-outbound-sales-pre-qualifier',
+                type: "CALL",
                 organisation_id: createdOrganizations[0].id,
                 base_prompt: '',
                 initial_prompt: '',
@@ -132,6 +129,7 @@ async function seed() {
             data: {
                 name: 'Sunrooof - Outbound Sales Pre Qualifier',
                 slug: 'askchimps-sunrooof-outbound-sales-pre-qualifier',
+                type: "CALL",
                 organisation_id: createdOrganizations[0].id,
                 base_prompt: '',
                 initial_prompt: '',
@@ -146,6 +144,7 @@ async function seed() {
             data: {
                 name: 'Outbound Sales Pre Qualifier',
                 slug: 'sunrooof-outbound-sales-pre-qualifier',
+                type: "CALL",
                 organisation_id: createdOrganizations[1].id,
                 base_prompt: '',
                 initial_prompt: '',
@@ -160,6 +159,7 @@ async function seed() {
             data: {
                 name: 'Outbound Sales Pre Qualifier',
                 slug: 'magppie-outbound-sales-pre-qualifier',
+                type: "CALL",
                 organisation_id: createdOrganizations[2].id,
                 base_prompt: '',
                 initial_prompt: '',

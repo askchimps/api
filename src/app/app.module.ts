@@ -11,6 +11,10 @@ import { PrismaModule } from '@modules/common/prisma/prisma.module';
 
 import { AuthModule } from '@modules/auth/auth.module';
 import { UserModule } from '@modules/user/user.module';
+import { OrganisationModule } from '@modules/organisation/organisation.module';
+import { LeadModule } from '@modules/lead/lead.module';
+import { CallModule } from '@modules/call/call.module';
+import { CreditHistoryModule } from '@modules/credit-history/credit-history.module';
 
 type NestModuleImport =
   | Type<any>
@@ -22,6 +26,10 @@ type NestModuleImport =
 const appModules: NestModuleImport[] = [
   AuthModule,
   UserModule,
+  OrganisationModule,
+  LeadModule,
+  CallModule,
+  CreditHistoryModule,
 ];
 
 // Infrastructure Modules (DB, config) used by the server

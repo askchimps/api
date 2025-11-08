@@ -29,10 +29,25 @@ export class SupabaseStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<JwtUser | null> {
-    // TODO: add caching
-    return this.prisma.user.findUnique({
-      where: { id: payload.sub, is_deleted: 0, is_disabled: 0 },
-      include: { user_organisations: true },
-    });
+    this.logger.log(`JWT validation attempt for user ID: ${payload.sub}`, 'SupabaseStrategy');
+    
+    try {
+      // TODO: add caching
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub, is_deleted: 0, is_disabled: 0 },
+        include: { user_organisations: true },
+      });
+
+      if (!user) {
+        this.logger.warn(`User not found or disabled for ID: ${payload.sub}`, 'SupabaseStrategy');
+        return null;
+      }
+
+      this.logger.log(`JWT validation successful for user: ${user.email}`, 'SupabaseStrategy');
+      return user;
+    } catch (error) {
+      this.logger.error(`Error during JWT validation for user ${payload.sub}`, error.stack, 'SupabaseStrategy');
+      return null;
+    }
   }
 }
