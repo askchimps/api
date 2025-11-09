@@ -14,6 +14,7 @@ import { UserModule } from '@modules/user/user.module';
 import { OrganisationModule } from '@modules/organisation/organisation.module';
 import { LeadModule } from '@modules/lead/lead.module';
 import { CallModule } from '@modules/call/call.module';
+import { ChatModule } from '@modules/chat/chat.module';
 import { CreditHistoryModule } from '@modules/credit-history/credit-history.module';
 
 type NestModuleImport =
@@ -29,6 +30,7 @@ const appModules: NestModuleImport[] = [
   OrganisationModule,
   LeadModule,
   CallModule,
+  ChatModule,
   CreditHistoryModule,
 ];
 

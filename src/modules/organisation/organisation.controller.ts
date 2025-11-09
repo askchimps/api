@@ -96,6 +96,7 @@ export class OrganisationController {
         @Query() chatsQueryDto: ChatsQueryDto
     ) {
         const isSuperAdmin = req.user?.is_super_admin === 1;
+        const userId = req.user?.id;
         return this.organisationService.getOrganisationChats(
             paramDto.id_or_slug,
             {
@@ -106,20 +107,22 @@ export class OrganisationController {
                 page: chatsQueryDto.page || 1,
                 limit: chatsQueryDto.limit || 1000,
             },
-            isSuperAdmin
+            isSuperAdmin,
+            userId
         );
     }
 
     @UseGuards(JwtAuthGuard)
     @Get(':id_or_slug/chat/:id')
     async getChatDetails(
-        @Param() paramDto: OrganisationDetailsParamDto,
+        @Param('id_or_slug') id_or_slug: string,
+        @Param('id') id: string,
         @Req() req: AuthRequest
     ) {
         const isSuperAdmin = req.user?.is_super_admin === 1;
         return this.organisationService.getChatDetails(
-            paramDto.id_or_slug,
-            paramDto.id,
+            id_or_slug,
+            parseInt(id),
             isSuperAdmin
         );
     }
