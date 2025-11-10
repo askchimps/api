@@ -203,4 +203,41 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
     this.logger.log(`Broadcasted chat update for chat ${chatId} to org ${organisationId} (sent to ${clientCount} clients)`);
   }
+
+  // Method to broadcast new chat creation to organisation room
+  async broadcastNewChat(organisationId: number, chat: any) {
+    const roomName = `org-${organisationId}`;
+
+    this.logger.debug(`🔍 Checking WebSocket server state for new chat broadcast to ${roomName}`);
+
+    // Check if server is ready
+    if (!this.isServerReady()) {
+      this.logger.warn(`❌ WebSocket server not ready, cannot broadcast new chat to ${roomName}`);
+      return;
+    }
+
+    // Check how many clients are in the room
+    const roomClients = this.server.sockets.adapter.rooms?.get(roomName);
+    const clientCount = roomClients ? roomClients.size : 0;
+
+    if (clientCount === 0) {
+      this.logger.debug(`📭 No clients connected to room ${roomName}, skipping new chat broadcast`);
+      return;
+    }
+
+    this.logger.log(`📤 Broadcasting new chat ${chat.id} to org ${organisationId} (room: ${roomName}) to ${clientCount} clients`);
+    this.logger.debug(`📤 Chat data:`, JSON.stringify(chat, null, 2));
+
+    const eventData = {
+      action: "created",
+      chat,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.logger.debug(`📤 Event data being sent:`, JSON.stringify(eventData, null, 2));
+
+    this.server.to(roomName).emit('new-chat', eventData);
+
+    this.logger.log(`✅ Broadcasted new chat ${chat.id} to org ${organisationId} (sent to ${clientCount} clients)`);
+  }
 }

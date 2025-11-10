@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Body, Param, UseGuards, ParseIntPipe, UploadedFiles, BadRequestException, Logger } from '@nestjs/common';
 import { HeaderAuthGuard } from '../../guards/header-auth.guard';
-import { ChatService, CreateMessageDto as ServiceCreateMessageDto } from './chat.service';
-import { CreateMessageDto, CreateMediaMessageDto, ChatParamDto } from './dto';
+import { ChatService, CreateMessageDto as ServiceCreateMessageDto, CreateChatDto as ServiceCreateChatDto } from './chat.service';
+import { CreateMessageDto, CreateMediaMessageDto, CreateChatDto, ChatParamDto } from './dto';
 import { UploadService, MultipartFile } from '../upload/upload.service';
 import { MESSAGE_TYPE } from '@prisma/client';
 
@@ -17,6 +17,31 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly uploadService: UploadService,
   ) {}
+
+  @Post()
+  async createChat(
+    @Body() createChatDto: CreateChatDto
+  ) {
+    this.logger.log(`Creating new chat for organisation: ${createChatDto.organisation}`);
+    this.logger.debug(`Chat data: ${JSON.stringify(createChatDto)}`);
+    
+    try {
+      const serviceDto: ServiceCreateChatDto = {
+        organisation: createChatDto.organisation,
+        agent: createChatDto.agent,
+        lead: createChatDto.lead,
+        source: createChatDto.source,
+        status: createChatDto.status,
+      };
+      
+      const result = await this.chatService.createChat(serviceDto);
+      this.logger.log(`Chat created successfully for organisation: ${createChatDto.organisation}`);
+      return result;
+    } catch (error) {
+      this.logger.error(`Failed to create chat for organisation ${createChatDto.organisation}:`, error?.stack || error);
+      throw error;
+    }
+  }
 
   @Post(':id/message')
   async createMessage(

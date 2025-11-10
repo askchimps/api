@@ -25,6 +25,14 @@ export interface CreateAttachmentData {
   thumbnail_url?: string;
 }
 
+export interface CreateChatDto {
+  organisation: string; // Can be organisation slug or ID
+  agent: string; // Can be agent slug or ID
+  lead?: string; // Can be lead phone number or ID (optional)
+  source: 'WHATSAPP' | 'INSTAGRAM';
+  status: string;
+}
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -172,7 +180,173 @@ export class ChatService {
       this.logger.error(`[${messageId}] Message creation failed:`, error?.stack || error);
       throw error;
     }
-  }  async getChatMessages(chatId: number, organisationId?: number) {
+  }
+
+  async createChat(createChatData: CreateChatDto) {
+    const chatId = Math.random().toString(36).substring(7);
+    this.logger.log(`[${chatId}] Creating new chat - Org: ${createChatData.organisation}, Agent: ${createChatData.agent}, Source: ${createChatData.source}`);
+    this.logger.debug(`[${chatId}] Chat data: ${JSON.stringify(createChatData)}`);
+
+    try {
+      // Resolve organisation slug to ID
+      this.logger.debug(`[${chatId}] Looking up organisation: ${createChatData.organisation}`);
+      const organisation = await this.prisma.organisation.findFirst({
+        where: {
+          OR: [
+            { slug: createChatData.organisation },
+            { id: isNaN(parseInt(createChatData.organisation)) ? undefined : parseInt(createChatData.organisation) }
+          ],
+          is_deleted: 0,
+          is_disabled: 0
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        }
+      });
+
+      if (!organisation) {
+        this.logger.error(`[${chatId}] Organisation not found: ${createChatData.organisation}`);
+        throw new NotFoundException('Organisation not found');
+      }
+
+      // Resolve agent slug to ID and verify it belongs to the organisation
+      this.logger.debug(`[${chatId}] Looking up agent: ${createChatData.agent}`);
+      const agent = await this.prisma.agent.findFirst({
+        where: {
+          OR: [
+            { slug: createChatData.agent },
+            { id: isNaN(parseInt(createChatData.agent)) ? undefined : parseInt(createChatData.agent) }
+          ],
+          organisation_id: organisation.id,
+          is_deleted: 0,
+          is_disabled: 0 
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        }
+      });
+
+      if (!agent) {
+        this.logger.error(`[${chatId}] Agent not found or doesn't belong to organisation: ${createChatData.agent}`);
+        throw new NotFoundException('Agent not found or does not belong to organisation');
+      }
+
+      // If lead is provided, resolve lead phone number or ID
+      let lead: any = null;
+      if (createChatData.lead) {
+        this.logger.debug(`[${chatId}] Looking up lead: ${createChatData.lead}`);
+        lead = await this.prisma.lead.findFirst({
+          where: {
+            OR: [
+              { phone_number: createChatData.lead },
+              { id: createChatData.lead.length > 8 ? undefined : parseInt(createChatData.lead) }
+            ],
+            is_deleted: 0 
+          },
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            phone_number: true,
+            email: true,
+            status: true,
+          }
+        });
+
+        if (!lead) {
+          this.logger.error(`[${chatId}] Lead not found: ${createChatData.lead}`);
+          throw new NotFoundException('Lead not found');
+        }
+      }
+
+      // Create the chat
+      this.logger.debug(`[${chatId}] Creating chat in database`);
+      const chat = await this.prisma.chat.create({
+        data: {
+          organisation_id: organisation.id,
+          agent_id: agent.id,
+          lead_id: lead?.id || null,
+          source: createChatData.source,
+          status: createChatData.status,
+        },
+        include: {
+          organisation: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+          agent: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+          lead: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              phone_number: true,
+              email: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      this.logger.debug(`[${chatId}] Chat created in database: ${chat.id}`);
+
+      this.logger.debug(`[${chatId}] Broadcasting new chat via WebSocket`);
+      // Broadcast the new chat via WebSocket
+      await this.chatGateway.broadcastNewChat(
+        organisation.id,
+        {
+          id: chat.id,
+          status: chat.status,
+          source: chat.source,
+          unread_messages: chat.unread_messages,
+          created_at: chat.created_at,
+          updated_at: chat.updated_at,
+          organisation: chat.organisation,
+          agent: chat.agent,
+          lead: chat.lead,
+          // Include first two messages (will be empty for new chat)
+          messages: [],
+        }
+      );
+
+      this.logger.log(`[${chatId}] Chat created successfully: ${chat.id}`);
+      return {
+        success: true,
+        message: 'Chat created successfully',
+        data: {
+          chat: {
+            id: chat.id,
+            status: chat.status,
+            source: chat.source,
+            unread_messages: chat.unread_messages,
+            created_at: chat.created_at,
+            updated_at: chat.updated_at,
+            organisation: chat.organisation,
+            agent: chat.agent,
+            lead: chat.lead,
+          },
+        },
+      };
+    } catch (error) {
+      this.logger.error(`[${chatId}] Chat creation failed:`, error?.stack || error);
+      throw error;
+    }
+  }
+
+  async getChatMessages(chatId: number, organisationId?: number) {
     // Verify chat exists and belongs to organisation if provided
     const whereCondition: any = {
       id: chatId,

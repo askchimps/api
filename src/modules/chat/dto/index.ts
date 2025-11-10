@@ -1,6 +1,6 @@
 import { IsNotEmpty, IsString, IsOptional, IsNumber, IsIn, IsEnum, IsArray, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { MESSAGE_TYPE } from '@prisma/client';
+import { MESSAGE_TYPE, CHAT_SOURCE } from '@prisma/client';
 
 export class CreateAttachmentDto {
   @IsNotEmpty()
@@ -34,6 +34,28 @@ export class CreateAttachmentDto {
   @IsOptional()
   @IsString()
   thumbnail_url?: string;
+}
+
+export class CreateChatDto {
+  @IsNotEmpty()
+  @IsString()
+  organisation: string; // Can be organisation slug or ID
+
+  @IsNotEmpty()
+  @IsString()
+  agent: string; // Can be agent slug or ID
+
+  @IsOptional()
+  @IsString()
+  lead?: string; // Can be lead phone number or ID (optional)
+
+  @IsNotEmpty()
+  @IsEnum(CHAT_SOURCE)
+  source: CHAT_SOURCE;
+
+  @IsNotEmpty()
+  @IsString()
+  status: string;
 }
 
 export class CreateMessageDto {
