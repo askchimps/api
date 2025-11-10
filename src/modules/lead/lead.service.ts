@@ -417,8 +417,8 @@ export class LeadService {
                 }
             }
 
-            // Handle Zoho Lead creation if provided
-            if (zoho_lead && createdZohoLeadOwner) {
+            // Handle Zoho Lead creation/update if provided
+            if (zoho_lead) {
                 const { id: zoho_lead_id, ...zohoLeadData } = zoho_lead;
 
                 if (zoho_lead_id) {
@@ -427,22 +427,26 @@ export class LeadService {
                         where: { id: zoho_lead_id }
                     });
 
+                    let zohoLeadCreateData: any = {
+                        ...zohoLeadData,
+                        lead_id: lead.id,
+                    };
+
+                    // Only add lead_owner_id if we have a created/updated owner
+                    if (createdZohoLeadOwner) {
+                        zohoLeadCreateData.lead_owner_id = createdZohoLeadOwner.id;
+                    }
+
                     if (existingZohoLead) {
                         await prisma.zohoLead.update({
                             where: { id: zoho_lead_id },
-                            data: {
-                                ...zohoLeadData,
-                                lead_id: lead.id,
-                                lead_owner_id: createdZohoLeadOwner.id
-                            }
+                            data: zohoLeadCreateData
                         });
                     } else {
                         await prisma.zohoLead.create({
                             data: {
                                 id: zoho_lead_id,
-                                ...zohoLeadData,
-                                lead_id: lead.id,
-                                lead_owner_id: createdZohoLeadOwner.id
+                                ...zohoLeadCreateData
                             }
                         });
                     }
@@ -505,6 +509,13 @@ export class LeadService {
             where: {
                 id: id,
                 is_deleted: 0
+            },
+            include: {
+                zoho_lead: {
+                    include: {
+                        lead_owner: true
+                    }
+                }
             }
         });
 
@@ -525,49 +536,137 @@ export class LeadService {
             }
         }
 
-        // Update lead
-        const lead = await this.prisma.lead.update({
-            where: {
-                id: id
-            },
-            data: {
-                ...leadData,
-                ...(organisations ? {
-                    organisations: {
-                        set: organisations.map(slug => ({ slug }))
+        // Start transaction to update lead and related data
+        const result = await this.prisma.$transaction(async (prisma) => {
+            // Handle Zoho Lead Owner update/creation if provided
+            let updatedZohoLeadOwner: { id: string; first_name: string | null; last_name: string | null; email: string | null; phone: string | null; } | null = null;
+            if (zoho_lead_owner) {
+                const { id: zoho_owner_id, ...ownerData } = zoho_lead_owner;
+
+                if (zoho_owner_id) {
+                    // Check if owner exists, create or update
+                    const existingOwner = await prisma.zohoLeadOwner.findUnique({
+                        where: { id: zoho_owner_id }
+                    });
+
+                    if (existingOwner) {
+                        updatedZohoLeadOwner = await prisma.zohoLeadOwner.update({
+                            where: { id: zoho_owner_id },
+                            data: ownerData
+                        });
+                    } else {
+                        updatedZohoLeadOwner = await prisma.zohoLeadOwner.create({
+                            data: {
+                                id: zoho_owner_id,
+                                ...ownerData
+                            }
+                        });
                     }
-                } : {}),
-                ...(remove_follow_up === 1 ? { next_follow_up: null } : next_follow_up ? { next_follow_up: new Date(next_follow_up) } : {}),
-            },
-            include: {
-                organisations: {
-                    select: {
-                        id: true,
-                        name: true,
-                        slug: true
-                    }
+                } else {
+                    throw new BadRequestException('Zoho lead owner ID is required');
                 }
             }
+
+            // Handle Zoho Lead update/creation if provided
+            if (zoho_lead) {
+                const { id: zoho_lead_id, ...zohoLeadData } = zoho_lead;
+
+                if (zoho_lead_id) {
+                    // Check if zoho lead exists
+                    const existingZohoLead = await prisma.zohoLead.findUnique({
+                        where: { id: zoho_lead_id }
+                    });
+
+                    let zohoLeadUpdateData: any = {
+                        ...zohoLeadData,
+                        lead_id: id,
+                    };
+
+                    // Update lead_owner_id if new owner was created/updated
+                    if (updatedZohoLeadOwner) {
+                        zohoLeadUpdateData.lead_owner_id = updatedZohoLeadOwner.id;
+                    }
+
+                    if (existingZohoLead) {
+                        await prisma.zohoLead.update({
+                            where: { id: zoho_lead_id },
+                            data: zohoLeadUpdateData
+                        });
+                    } else {
+                        await prisma.zohoLead.create({
+                            data: {
+                                id: zoho_lead_id,
+                                ...zohoLeadUpdateData
+                            }
+                        });
+                    }
+                } else {
+                    throw new BadRequestException('Zoho lead ID is required');
+                }
+            } else if (updatedZohoLeadOwner && existingLead.zoho_lead) {
+                // If only owner was updated but zoho_lead exists, update the owner reference
+                await prisma.zohoLead.update({
+                    where: { id: existingLead.zoho_lead.id },
+                    data: {
+                        lead_owner_id: updatedZohoLeadOwner.id
+                    }
+                });
+            }
+
+            // Update the main lead record
+            return await prisma.lead.update({
+                where: {
+                    id: id
+                },
+                data: {
+                    ...leadData,
+                    ...(organisations ? {
+                        organisations: {
+                            set: organisations.map(slug => ({ slug }))
+                        }
+                    } : {}),
+                    ...(remove_follow_up === 1 ? { next_follow_up: null } : next_follow_up ? { next_follow_up: new Date(next_follow_up) } : {}),
+                },
+                include: {
+                    organisations: {
+                        select: {
+                            id: true,
+                            name: true,
+                            slug: true
+                        }
+                    },
+                    zoho_lead: {
+                        include: {
+                            lead_owner: true
+                        }
+                    }
+                }
+            });
         });
 
+        if (!result) {
+            throw new Error('Failed to update lead');
+        }
+
         return {
-            id: lead.id,
-            first_name: lead.first_name,
-            last_name: lead.last_name,
-            full_name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || null,
-            email: lead.email,
-            phone_number: lead.phone_number,
-            source: lead.source,
-            status: lead.status,
-            is_indian: lead.is_indian,
-            follow_up_count: lead.follow_up_count,
-            reschedule_count: lead.reschedule_count,
-            last_follow_up: lead.last_follow_up,
-            next_follow_up: lead.next_follow_up,
-            call_active: lead.call_active,
-            created_at: lead.created_at,
-            updated_at: lead.updated_at,
-            organisations: lead.organisations
+            id: result.id,
+            first_name: result.first_name,
+            last_name: result.last_name,
+            full_name: `${result.first_name || ''} ${result.last_name || ''}`.trim() || null,
+            email: result.email,
+            phone_number: result.phone_number,
+            source: result.source,
+            status: result.status,
+            is_indian: result.is_indian,
+            follow_up_count: result.follow_up_count,
+            reschedule_count: result.reschedule_count,
+            last_follow_up: result.last_follow_up,
+            next_follow_up: result.next_follow_up,
+            call_active: result.call_active,
+            created_at: result.created_at,
+            updated_at: result.updated_at,
+            organisations: result.organisations,
+            zoho_lead: result.zoho_lead
         };
     }
 

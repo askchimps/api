@@ -830,7 +830,26 @@ export class OrganisationService {
                                 id: true,
                                 role: true,
                                 content: true,
+                                message_type: true,
+                                prompt_tokens: true,
+                                completion_tokens: true,
+                                total_cost: true,
                                 created_at: true,
+                                updated_at: true,
+                                attachments: {
+                                    select: {
+                                        id: true,
+                                        file_url: true,
+                                        file_name: true,
+                                        file_size: true,
+                                        file_type: true,
+                                        width: true,
+                                        height: true,
+                                        duration: true,
+                                        thumbnail_url: true,
+                                        created_at: true,
+                                    },
+                                },
                             },
                             orderBy: {
                                 created_at: 'asc',
@@ -878,6 +897,19 @@ export class OrganisationService {
             ]);
 
             this.logger.log(`Database queries completed - Found ${chats.length} chats, total: ${totalChats}, open: ${openChats}, with lead: ${chatsWithLead}, without lead: ${chatsWithoutLead}`);
+            
+            // Log sample of messages with attachments for debugging
+            if (chats.length > 0) {
+                const sampleChat = chats[0];
+                this.logger.debug(`Sample chat data - ID: ${sampleChat.id}, Messages: ${sampleChat.messages.length}`);
+                if (sampleChat.messages.length > 0) {
+                    const sampleMessage = sampleChat.messages[0];
+                    this.logger.debug(`Sample message - ID: ${sampleMessage.id}, Type: ${sampleMessage.message_type}, Attachments: ${sampleMessage.attachments?.length || 0}`);
+                    if (sampleMessage.attachments && sampleMessage.attachments.length > 0) {
+                        this.logger.debug(`Sample attachment: ${JSON.stringify(sampleMessage.attachments[0])}`);
+                    }
+                }
+            }
 
             // Transform chats data
             this.logger.log(`Transforming ${chats.length} chat records`);
@@ -946,7 +978,7 @@ export class OrganisationService {
         const organisation = await this.prisma.organisation.findFirst({
             where: {
                 OR: [
-                    { id: id },
+                    { id: isNaN(id) ? undefined : id },
                     { slug: slug }
                 ]
             }
@@ -1014,11 +1046,26 @@ export class OrganisationService {
                         id: true,
                         role: true,
                         content: true,
+                        message_type: true,
                         prompt_tokens: true,
                         completion_tokens: true,
                         total_cost: true,
                         created_at: true,
                         updated_at: true,
+                        attachments: {
+                            select: {
+                                id: true,
+                                file_url: true,
+                                file_name: true,
+                                file_size: true,
+                                file_type: true,
+                                width: true,
+                                height: true,
+                                duration: true,
+                                thumbnail_url: true,
+                                created_at: true,
+                            },
+                        },
                     },
                     orderBy: {
                         created_at: 'asc', // Chronological order
@@ -1101,7 +1148,7 @@ export class OrganisationService {
                 totalAssociatedCosts,
                 grandTotalCost,
                 averageMessageLength: messageCount > 0
-                    ? Math.round(chat.messages.reduce((sum, msg) => sum + msg.content.length, 0) / messageCount)
+                    ? Math.round(chat.messages.reduce((sum, msg) => sum + (msg.content?.length || 0), 0) / messageCount)
                     : 0,
             },
         };

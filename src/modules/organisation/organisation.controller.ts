@@ -88,7 +88,6 @@ export class OrganisationController {
         );
     }
 
-    @UseGuards(JwtAuthGuard)
     @Get(':id_or_slug/chats')
     async getOrganisationChats(
         @Param() paramDto: OrganisationParamDto,
@@ -96,7 +95,6 @@ export class OrganisationController {
         @Query() chatsQueryDto: ChatsQueryDto
     ) {
         const isSuperAdmin = req.user?.is_super_admin === 1;
-        const userId = req.user?.id;
         return this.organisationService.getOrganisationChats(
             paramDto.id_or_slug,
             {
@@ -107,8 +105,7 @@ export class OrganisationController {
                 page: chatsQueryDto.page || 1,
                 limit: chatsQueryDto.limit || 1000,
             },
-            isSuperAdmin,
-            userId
+            isSuperAdmin
         );
     }
 
