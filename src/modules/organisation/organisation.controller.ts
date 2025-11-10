@@ -109,7 +109,7 @@ export class OrganisationController {
         );
     }
 
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(HeaderAuthGuard)
     @Get(':id_or_slug/chat/:id')
     async getChatDetails(
         @Param('id_or_slug') id_or_slug: string,
@@ -119,7 +119,7 @@ export class OrganisationController {
         const isSuperAdmin = req.user?.is_super_admin === 1;
         return this.organisationService.getChatDetails(
             id_or_slug,
-            parseInt(id),
+            id,
             isSuperAdmin
         );
     }

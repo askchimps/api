@@ -4,7 +4,7 @@ import { ChatGateway } from './chat.gateway';
 import { MESSAGE_TYPE } from '@prisma/client';
 
 export interface CreateMessageDto {
-  chatId: number;
+  chatId: string;
   role: 'user' | 'assistant' | 'bot';
   content?: string;
   message_type?: MESSAGE_TYPE;
@@ -31,6 +31,18 @@ export interface CreateChatDto {
   lead?: string; // Can be lead phone number or ID (optional)
   source: 'WHATSAPP' | 'INSTAGRAM';
   status: string;
+  instagram_id?: string; // Unique Instagram chat identifier
+  whatsapp_id?: string; // Unique WhatsApp chat identifier  
+  human_handled?: number; // 0 or 1 to indicate if human handled
+}
+
+export interface UpdateChatDto {
+  lead?: string; // Can be lead phone number or ID
+  status?: string;
+  instagram_id?: string; // Unique Instagram chat identifier
+  whatsapp_id?: string; // Unique WhatsApp chat identifier
+  human_handled?: number; // 0 or 1 to indicate if human handled
+  unread_messages?: number; // Count of unread messages
 }
 
 @Injectable()
@@ -40,23 +52,27 @@ export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly chatGateway: ChatGateway,
-  ) {}
+  ) { }
 
   async createMessage(createMessageData: CreateMessageDto) {
     const messageId = Math.random().toString(36).substring(7);
     this.logger.log(`[${messageId}] Creating message - ChatId: ${createMessageData.chatId}, Role: ${createMessageData.role}, Type: ${createMessageData.message_type}`);
-    this.logger.debug(`[${messageId}] Message data: ${JSON.stringify({ 
-      ...createMessageData, 
-      attachments: createMessageData.attachments?.length || 0 
+    this.logger.debug(`[${messageId}] Message data: ${JSON.stringify({
+      ...createMessageData,
+      attachments: createMessageData.attachments?.length || 0
     })}`);
 
     try {
       // First, verify the chat exists and get organisation details
       this.logger.debug(`[${messageId}] Looking up chat: ${createMessageData.chatId}`);
-      const chat = await this.prisma.chat.findUnique({
-        where: { 
-          id: createMessageData.chatId,
-          is_deleted: 0 
+      const chat = await this.prisma.chat.findFirst({
+        where: {
+          OR: [
+            { id: createMessageData.chatId.length > 7 ? undefined : parseInt(createMessageData.chatId) },
+            { instagram_id: createMessageData.chatId },
+            { whatsapp_id: createMessageData.chatId }
+          ],
+          is_deleted: 0
         },
         include: {
           organisation: {
@@ -96,7 +112,7 @@ export class ChatService {
         data: {
           organisation_id: chat.organisation_id,
           agent_id: chat.agent_id,
-          chat_id: createMessageData.chatId,
+          chat_id: chat.id,
           role: createMessageData.role,
           content: createMessageData.content,
           message_type: createMessageData.message_type || 'TEXT',
@@ -132,7 +148,7 @@ export class ChatService {
       // Update chat's updated_at timestamp
       this.logger.debug(`[${messageId}] Updating chat timestamp`);
       await this.prisma.chat.update({
-        where: { id: createMessageData.chatId },
+        where: { id: chat.id },
         data: { updated_at: new Date() },
       });
 
@@ -140,42 +156,42 @@ export class ChatService {
       // Broadcast the new message via WebSocket
       await this.chatGateway.broadcastNewMessage(
         chat.organisation_id,
-        createMessageData.chatId,
+        chat.id,
         {
-        action: "created", // Add action field that frontend expects
-        id: message.id,
-        role: message.role,
-        content: message.content,
-        message_type: message.message_type,
-        attachments: message.attachments,
-        created_at: message.created_at,
-        agent: message.agent,
-        chat: {
-          id: chat.id,
-          status: chat.status,
-          source: chat.source,
-          organisation: chat.organisation,
-          lead: chat.lead,
-        },
-      }
-    );
+          action: "created", // Add action field that frontend expects
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          message_type: message.message_type,
+          attachments: message.attachments,
+          created_at: message.created_at,
+          agent: message.agent,
+          chat: {
+            id: chat.id,
+            status: chat.status,
+            source: chat.source,
+            organisation: chat.organisation,
+            lead: chat.lead,
+          },
+        }
+      );
 
-    this.logger.log(`[${messageId}] Message created successfully: ${message.id}`);
-    return {
-      success: true,
-      message: 'Message created successfully',
-      data: {
-        message,
-        chat: {
-          id: chat.id,
-          status: chat.status,
-          source: chat.source,
-          organisation: chat.organisation,
-          agent: chat.agent,
-          lead: chat.lead,
+      this.logger.log(`[${messageId}] Message created successfully: ${message.id}`);
+      return {
+        success: true,
+        message: 'Message created successfully',
+        data: {
+          message,
+          chat: {
+            id: chat.id,
+            status: chat.status,
+            source: chat.source,
+            organisation: chat.organisation,
+            agent: chat.agent,
+            lead: chat.lead,
+          },
         },
-      },
-    };
+      };
     } catch (error) {
       this.logger.error(`[${messageId}] Message creation failed:`, error?.stack || error);
       throw error;
@@ -221,7 +237,7 @@ export class ChatService {
           ],
           organisation_id: organisation.id,
           is_deleted: 0,
-          is_disabled: 0 
+          is_disabled: 0
         },
         select: {
           id: true,
@@ -245,7 +261,7 @@ export class ChatService {
               { phone_number: createChatData.lead },
               { id: createChatData.lead.length > 8 ? undefined : parseInt(createChatData.lead) }
             ],
-            is_deleted: 0 
+            is_deleted: 0
           },
           select: {
             id: true,
@@ -272,6 +288,9 @@ export class ChatService {
           lead_id: lead?.id || null,
           source: createChatData.source,
           status: createChatData.status,
+          instagram_id: createChatData.instagram_id || null,
+          whatsapp_id: createChatData.whatsapp_id || null,
+          human_handled: createChatData.human_handled || 0,
         },
         include: {
           organisation: {
@@ -406,5 +425,190 @@ export class ChatService {
       message: 'Chat messages retrieved successfully',
       data: chat,
     };
+  }
+
+  async getChatById(idOrExternalId: string) {
+    this.logger.log(`Getting chat by ID: ${idOrExternalId}`);
+
+    try {
+      // Try to find chat by regular ID first, then by instagram_id, then by whatsapp_id
+      let whereCondition: any;
+
+      // If it's a number, search by regular ID
+      if (idOrExternalId.length < 7) {
+        whereCondition = {
+          id: parseInt(idOrExternalId),
+          is_deleted: 0,
+        };
+      } else {
+        // If it's not a number, search by external IDs
+        whereCondition = {
+          OR: [
+            { instagram_id: idOrExternalId },
+            { whatsapp_id: idOrExternalId }
+          ],
+          is_deleted: 0,
+        };
+      }
+
+      const chat = await this.prisma.chat.findFirst({
+        where: whereCondition,
+        include: {
+          organisation: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+          agent: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+          lead: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              phone_number: true,
+              email: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      if (!chat) {
+        throw new NotFoundException('Chat not found');
+      }
+
+      this.logger.log(`Chat found: ${chat.id}`);
+      return {
+        success: true,
+        message: 'Chat retrieved successfully',
+        data: chat,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get chat by ID ${idOrExternalId}:`, error?.stack || error);
+      throw error;
+    }
+  }
+
+  async updateChat(idOrExternalId: string, updateData: any) {
+    this.logger.log(`Updating chat by ID: ${idOrExternalId}`);
+    this.logger.debug(`Update data: ${JSON.stringify(updateData)}`);
+
+    try {
+      // First, find the chat to make sure it exists
+      const existingChat = await this.getChatById(idOrExternalId);
+      if (!existingChat.success) {
+        throw new NotFoundException('Chat not found');
+      }
+
+      const chatId = existingChat.data.id;
+      const originalHumanHandled = existingChat.data.human_handled;
+
+      // If lead is provided in update data, resolve it
+      let leadId: number | null = null;
+      if (updateData.lead) {
+        const lead = await this.prisma.lead.findFirst({
+          where: {
+            OR: [
+              { phone_number: updateData.lead },
+              { id: updateData.lead.length > 8 ? undefined : parseInt(updateData.lead) }
+            ],
+            is_deleted: 0
+          },
+        });
+
+        if (!lead) {
+          throw new NotFoundException('Lead not found');
+        }
+        leadId = lead.id;
+      }
+
+      // Prepare update data
+      const updatePayload: any = {};
+      if (updateData.status) updatePayload.status = updateData.status;
+      if (updateData.instagram_id !== undefined) updatePayload.instagram_id = updateData.instagram_id;
+      if (updateData.whatsapp_id !== undefined) updatePayload.whatsapp_id = updateData.whatsapp_id;
+      if (updateData.human_handled !== undefined) updatePayload.human_handled = updateData.human_handled;
+      if (updateData.unread_messages !== undefined) updatePayload.unread_messages = updateData.unread_messages;
+      if (leadId !== null) updatePayload.lead_id = leadId;
+
+      // Update the chat
+      const updatedChat = await this.prisma.chat.update({
+        where: { id: chatId },
+        data: updatePayload,
+        include: {
+          organisation: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+          agent: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+          lead: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              phone_number: true,
+              email: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      this.logger.log(`Chat updated successfully: ${chatId}`);
+
+      // Broadcast chat update via WebSocket, especially for human_handled changes
+      if (updatedChat.organisation_id) {
+        this.logger.debug(`Broadcasting chat update via WebSocket for chat ${chatId}`);
+        await this.chatGateway.broadcastChatUpdate(
+          updatedChat.organisation_id,
+          chatId,
+          {
+            action: "updated",
+            chat: {
+              id: updatedChat.id,
+              status: updatedChat.status,
+              human_handled: updatedChat.human_handled,
+              instagram_id: updatedChat.instagram_id,
+              whatsapp_id: updatedChat.whatsapp_id,
+              unread_messages: updatedChat.unread_messages,
+              updated_at: updatedChat.updated_at,
+              organisation: updatedChat.organisation,
+              agent: updatedChat.agent,
+              lead: updatedChat.lead,
+            },
+            // Track what specific fields were updated for debugging
+            updatedFields: Object.keys(updatePayload),
+            wasHumanHandledUpdated: updateData.human_handled !== undefined && updateData.human_handled !== originalHumanHandled,
+          }
+        );
+        this.logger.debug(`Successfully broadcasted chat update for chat ${chatId}`);
+      }
+
+      return {
+        success: true,
+        message: 'Chat updated successfully',
+        data: updatedChat,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to update chat ${idOrExternalId}:`, error?.stack || error);
+      throw error;
+    }
   }
 }

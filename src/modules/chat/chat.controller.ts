@@ -1,7 +1,7 @@
-import { Controller, Post, Get, Body, Param, UseGuards, ParseIntPipe, UploadedFiles, BadRequestException, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, Param, UseGuards, ParseIntPipe, UploadedFiles, BadRequestException, Logger } from '@nestjs/common';
 import { HeaderAuthGuard } from '../../guards/header-auth.guard';
 import { ChatService, CreateMessageDto as ServiceCreateMessageDto, CreateChatDto as ServiceCreateChatDto } from './chat.service';
-import { CreateMessageDto, CreateMediaMessageDto, CreateChatDto, ChatParamDto } from './dto';
+import { CreateMessageDto, CreateMediaMessageDto, CreateChatDto, UpdateChatDto, ChatParamDto } from './dto';
 import { UploadService, MultipartFile } from '../upload/upload.service';
 import { MESSAGE_TYPE } from '@prisma/client';
 
@@ -32,6 +32,9 @@ export class ChatController {
         lead: createChatDto.lead,
         source: createChatDto.source,
         status: createChatDto.status,
+        instagram_id: createChatDto.instagram_id,
+        whatsapp_id: createChatDto.whatsapp_id,
+        human_handled: createChatDto.human_handled,
       };
       
       const result = await this.chatService.createChat(serviceDto);
@@ -48,13 +51,13 @@ export class ChatController {
     @Param() params: ChatParamDto,
     @Body() createMessageDto: CreateMessageDto
   ) {
-    const chatId = parseInt(params.id);
-    this.logger.log(`Creating message for chat: ${chatId}`);
+    const idOrExternalId = params.id;
+    this.logger.log(`Creating message for chat: ${idOrExternalId}`);
     this.logger.debug(`Message data: ${JSON.stringify(createMessageDto)}`);
     
     try {
       const serviceDto: ServiceCreateMessageDto = {
-        chatId,
+        chatId: idOrExternalId,
         role: createMessageDto.role,
         content: createMessageDto.content,
         message_type: createMessageDto.message_type,
@@ -65,10 +68,10 @@ export class ChatController {
       };
       
       const result = await this.chatService.createMessage(serviceDto);
-      this.logger.log(`Message created successfully for chat: ${chatId}`);
+      this.logger.log(`Message created successfully for chat: ${idOrExternalId}`);
       return result;
     } catch (error) {
-      this.logger.error(`Failed to create message for chat ${chatId}:`, error?.stack || error);
+      this.logger.error(`Failed to create message for chat ${idOrExternalId}:`, error?.stack || error);
       throw error;
     }
   }
@@ -79,8 +82,8 @@ export class ChatController {
     @Body() createMessageDto: CreateMediaMessageDto,
     @UploadedFiles() files?: any[]
   ) {
-    const chatId = parseInt(params.id);
-    this.logger.log(`Creating media message for chat: ${chatId}`);
+    const idOrExternalId = params.id;
+    this.logger.log(`Creating media message for chat: ${idOrExternalId}`);
     this.logger.debug(`Media message data: ${JSON.stringify(createMessageDto)}`);
     this.logger.debug(`Files provided: ${files?.length || 0}`);
     
@@ -129,13 +132,13 @@ export class ChatController {
       const uploadResults = await this.uploadService.uploadMultipleFiles(
         multipartFiles,
         category,
-        `chat-${chatId}`
+        `chat-${idOrExternalId}`
       );
       this.logger.debug(`Upload completed: ${uploadResults.length} files uploaded`);
 
       // Create message with attachments
       const serviceDto: ServiceCreateMessageDto = {
-        chatId,
+        chatId: idOrExternalId,
         role: createMessageDto.role,
         content: createMessageDto.content,
         message_type: createMessageDto.message_type,
@@ -146,10 +149,10 @@ export class ChatController {
       };
       
       const result = await this.chatService.createMessage(serviceDto);
-      this.logger.log(`Media message created successfully for chat: ${chatId}`);
+      this.logger.log(`Media message created successfully for chat: ${idOrExternalId}`);
       return result;
     } catch (error) {
-      this.logger.error(`Failed to create media message for chat ${chatId}:`, error?.stack || error);
+      this.logger.error(`Failed to create media message for chat ${idOrExternalId}:`, error?.stack || error);
       throw error;
     }
   }
@@ -161,5 +164,30 @@ export class ChatController {
     const chatId = parseInt(params.id);
     
     return this.chatService.getChatMessages(chatId);
+  }
+
+  @Get(':id')
+  async getChatById(
+    @Param() params: ChatParamDto
+  ) {
+    return this.chatService.getChatById(params.id);
+  }
+
+  @Put(':id')
+  async updateChat(
+    @Param() params: ChatParamDto,
+    @Body() updateChatDto: UpdateChatDto
+  ) {
+    this.logger.log(`Updating chat: ${params.id}`);
+    this.logger.debug(`Update data: ${JSON.stringify(updateChatDto)}`);
+    
+    try {
+      const result = await this.chatService.updateChat(params.id, updateChatDto);
+      this.logger.log(`Chat updated successfully: ${params.id}`);
+      return result;
+    } catch (error) {
+      this.logger.error(`Failed to update chat ${params.id}:`, error?.stack || error);
+      throw error;
+    }
   }
 }

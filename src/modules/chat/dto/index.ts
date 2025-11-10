@@ -56,6 +56,19 @@ export class CreateChatDto {
   @IsNotEmpty()
   @IsString()
   status: string;
+
+  @IsOptional()
+  @IsString()
+  instagram_id?: string; // Unique Instagram chat identifier
+
+  @IsOptional()
+  @IsString()
+  whatsapp_id?: string; // Unique WhatsApp chat identifier
+
+  @IsOptional()
+  @IsNumber()
+  @Transform(({ value }) => Number(value))
+  human_handled?: number; // 0 or 1 to indicate if human handled
 }
 
 export class CreateMessageDto {
@@ -128,4 +141,32 @@ export class ChatParamDto {
   @IsNotEmpty()
   @IsString()
   id: string;
+}
+
+export class UpdateChatDto {
+  @IsOptional()
+  @IsString()
+  lead?: string; // Can be lead phone number or ID
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  instagram_id?: string; // Unique Instagram chat identifier
+
+  @IsOptional()
+  @IsString()
+  whatsapp_id?: string; // Unique WhatsApp chat identifier
+
+  @IsOptional()
+  @IsNumber()
+  @Transform(({ value }) => Number(value))
+  human_handled?: number; // 0 or 1 to indicate if human handled
+
+  @IsOptional()
+  @IsNumber()
+  @Transform(({ value }) => Number(value))
+  unread_messages?: number; // Count of unread messages
 }

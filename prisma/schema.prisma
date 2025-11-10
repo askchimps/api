@@ -317,6 +317,8 @@ model Chat {
   organisation_id   Int
   agent_id          Int
   lead_id           Int?
+  instagram_id      String?     @unique
+  whatsapp_id       String?     @unique
   source            CHAT_SOURCE
   status            String
   summary           String?     @db.Text
@@ -325,6 +327,7 @@ model Chat {
   completion_tokens Int         @default(0)
   total_cost        Float?
   unread_messages   Int         @default(0)
+  human_handled     Int         @default(0)
 
   is_deleted Int      @default(0)
   created_at DateTime @default(now())
@@ -380,10 +383,10 @@ model MessageAttachment {
   file_url      String
   file_name     String
   file_size     Int
-  file_type     String  // MIME type
-  width         Int?    // For images/videos
-  height        Int?    // For images/videos
-  duration      Int?    // For audio/videos in seconds
+  file_type     String // MIME type
+  width         Int? // For images/videos
+  height        Int? // For images/videos
+  duration      Int? // For audio/videos in seconds
   thumbnail_url String? // For videos
 
   created_at DateTime @default(now())

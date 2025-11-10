@@ -143,7 +143,27 @@ async function bootstrap() {
     }
   };
 
-  logger.log('🚀 Manual WebSocket server started on port 4023');
+  // Add a method to broadcast chat updates from the manual server
+  (socketServer as any).broadcastChatUpdate = (organisationId: number, chatId: number, updateData: any) => {
+    const roomName = `org-${organisationId}`;
+    const room = socketServer.sockets.adapter.rooms.get(roomName);
+    const clientCount = room ? room.size : 0;
+
+    logger.log(`📤 Manual server broadcasting chat update ${chatId} to room ${roomName} (${clientCount} clients)`);
+
+    if (clientCount > 0) {
+      socketServer.to(roomName).emit('chat-updated', {
+        chatId,
+        updateData,
+        timestamp: new Date().toISOString(),
+      });
+      logger.log(`✅ Manual server broadcasted chat update to ${clientCount} clients`);
+    } else {
+      logger.log(`📭 Manual server: No clients in room ${roomName}`);
+    }
+  };
+
+  logger.log(`🚀 Manual WebSocket server started on port ${port}`);
 
   // Assign the manual Socket.IO server instance to ChatGateway so broadcasts use it
   try {
@@ -160,6 +180,11 @@ async function bootstrap() {
       // Override the broadcastNewChat method to use manual server
       chatGateway.broadcastNewChat = (organisationId: number, chat: any) => {
         return (socketServer as any).broadcastNewChat(organisationId, chat);
+      };
+
+      // Override the broadcastChatUpdate method to use manual server
+      chatGateway.broadcastChatUpdate = (organisationId: number, chatId: number, updateData: any) => {
+        return (socketServer as any).broadcastChatUpdate(organisationId, chatId, updateData);
       };
 
       logger.log('🔗 Assigned manual Socket.IO server and broadcast methods to ChatGateway');

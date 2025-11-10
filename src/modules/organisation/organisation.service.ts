@@ -396,6 +396,10 @@ export class OrganisationService {
                         id: chat.id,
                         status: chat.status,
                         source: chat.source,
+                        instagram_id: chat.instagram_id,
+                        whatsapp_id: chat.whatsapp_id,
+                        human_handled: chat.human_handled,
+                        unread_messages: chat.unread_messages,
                         prompt_tokens: chat.prompt_tokens,
                         completion_tokens: chat.completion_tokens,
                         total_cost: chat.total_cost,
@@ -897,7 +901,7 @@ export class OrganisationService {
             ]);
 
             this.logger.log(`Database queries completed - Found ${chats.length} chats, total: ${totalChats}, open: ${openChats}, with lead: ${chatsWithLead}, without lead: ${chatsWithoutLead}`);
-            
+
             // Log sample of messages with attachments for debugging
             if (chats.length > 0) {
                 const sampleChat = chats[0];
@@ -917,6 +921,10 @@ export class OrganisationService {
                 id: chat.id,
                 status: chat.status,
                 source: chat.source,
+                instagram_id: chat.instagram_id,
+                whatsapp_id: chat.whatsapp_id,
+                human_handled: chat.human_handled,
+                unread_messages: chat.unread_messages,
                 created_at: chat.created_at,
                 updated_at: chat.updated_at,
                 name: chat.lead
@@ -968,7 +976,7 @@ export class OrganisationService {
 
     async getChatDetails(
         idOrSlug: string,
-        chatId: number,
+        idIrExternalId: string,
         isSuperAdmin: boolean = false
     ) {
         const id = Number(idOrSlug);
@@ -1000,7 +1008,11 @@ export class OrganisationService {
         // Get the specific chat with all details
         const chat = await this.prisma.chat.findFirst({
             where: {
-                id: chatId,
+                OR: [
+                    { id: idIrExternalId.length > 6 ? undefined : parseInt(idIrExternalId) },
+                    { whatsapp_id: idIrExternalId },
+                    { instagram_id: idIrExternalId },
+                ],
                 organisation_id: orgId,
                 is_deleted: 0,
             },
@@ -1122,6 +1134,10 @@ export class OrganisationService {
                 id: chat.id,
                 status: chat.status,
                 source: chat.source,
+                instagram_id: chat.instagram_id,
+                whatsapp_id: chat.whatsapp_id,
+                human_handled: chat.human_handled,
+                unread_messages: chat.unread_messages,
                 summary: chat.summary,
                 analysis: chat.analysis,
                 prompt_tokens: chat.prompt_tokens,
@@ -2112,6 +2128,10 @@ export class OrganisationService {
                 id: chat.id,
                 status: chat.status,
                 source: chat.source,
+                instagram_id: chat.instagram_id,
+                whatsapp_id: chat.whatsapp_id,
+                human_handled: chat.human_handled,
+                unread_messages: chat.unread_messages,
                 summary: chat.summary,
                 analysis: chat.analysis,
                 prompt_tokens: chat.prompt_tokens,
