@@ -45,6 +45,7 @@ export class UploadController {
       this.logger.log('Processing multipart data...');
       
       let category: string | undefined;
+      let subfolder: string | undefined;
       let fileData: any | undefined;
 
       // Process multipart parts
@@ -57,6 +58,10 @@ export class UploadController {
           if (part.fieldname === 'category') {
             category = part.value as string;
             this.logger.log(`Category field: ${category}`);
+          }
+          else if (part.fieldname === 'subFolder') {
+            subfolder = part.value as string;
+            this.logger.log(`Subfolder field: ${subfolder}`);
           }
         } else if (part.type === 'file') {
           // Handle file field
@@ -108,7 +113,8 @@ export class UploadController {
       // Upload file
       const result = await this.uploadService.uploadFile(
         multipartFile,
-        category as 'image' | 'video' | 'audio' | 'document'
+        category as 'image' | 'video' | 'audio' | 'document',
+        subfolder
       );
 
       this.logger.log(`Single file upload completed successfully - ${fileData.filename}`);

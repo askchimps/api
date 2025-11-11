@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { ChatGateway } from './chat.gateway';
 import { MESSAGE_TYPE } from '@prisma/client';
 
 export interface CreateMessageDto {
+  organisation: string;
   chatId: string;
   role: 'user' | 'assistant' | 'bot';
   content?: string;
@@ -51,7 +51,6 @@ export class ChatService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly chatGateway: ChatGateway,
   ) { }
 
   async createMessage(createMessageData: CreateMessageDto) {
@@ -72,7 +71,12 @@ export class ChatService {
             { instagram_id: createMessageData.chatId },
             { whatsapp_id: createMessageData.chatId }
           ],
-          is_deleted: 0
+          is_deleted: 0,
+          organisation: {
+            slug: createMessageData.organisation,
+            is_deleted: 0,
+            is_disabled: 0
+          }
         },
         include: {
           organisation: {
@@ -149,32 +153,10 @@ export class ChatService {
       this.logger.debug(`[${messageId}] Updating chat timestamp`);
       await this.prisma.chat.update({
         where: { id: chat.id },
-        data: { updated_at: new Date() },
+        data: { updated_at: new Date(), unread_messages: chat.unread_messages + 1 },
       });
 
-      this.logger.debug(`[${messageId}] Broadcasting message via WebSocket`);
-      // Broadcast the new message via WebSocket
-      await this.chatGateway.broadcastNewMessage(
-        chat.organisation_id,
-        chat.id,
-        {
-          action: "created", // Add action field that frontend expects
-          id: message.id,
-          role: message.role,
-          content: message.content,
-          message_type: message.message_type,
-          attachments: message.attachments,
-          created_at: message.created_at,
-          agent: message.agent,
-          chat: {
-            id: chat.id,
-            status: chat.status,
-            source: chat.source,
-            organisation: chat.organisation,
-            lead: chat.lead,
-          },
-        }
-      );
+      this.logger.log(`[${messageId}] Message created successfully`);
 
       this.logger.log(`[${messageId}] Message created successfully: ${message.id}`);
       return {
@@ -322,25 +304,6 @@ export class ChatService {
 
       this.logger.debug(`[${chatId}] Chat created in database: ${chat.id}`);
 
-      this.logger.debug(`[${chatId}] Broadcasting new chat via WebSocket`);
-      // Broadcast the new chat via WebSocket
-      await this.chatGateway.broadcastNewChat(
-        organisation.id,
-        {
-          id: chat.id,
-          status: chat.status,
-          source: chat.source,
-          unread_messages: chat.unread_messages,
-          created_at: chat.created_at,
-          updated_at: chat.updated_at,
-          organisation: chat.organisation,
-          agent: chat.agent,
-          lead: chat.lead,
-          // Include first two messages (will be empty for new chat)
-          messages: [],
-        }
-      );
-
       this.logger.log(`[${chatId}] Chat created successfully: ${chat.id}`);
       return {
         success: true,
@@ -365,15 +328,17 @@ export class ChatService {
     }
   }
 
-  async getChatMessages(chatId: number, organisationId?: number) {
+  async getChatMessages(chatId: number, organisation: string) {
     // Verify chat exists and belongs to organisation if provided
     const whereCondition: any = {
       id: chatId,
       is_deleted: 0,
     };
 
-    if (organisationId) {
-      whereCondition.organisation_id = organisationId;
+    if (organisation) {
+      whereCondition.organisation = {
+        slug: organisation
+      };
     }
 
     const chat = await this.prisma.chat.findUnique({
@@ -427,7 +392,7 @@ export class ChatService {
     };
   }
 
-  async getChatById(idOrExternalId: string) {
+  async getChatById(idOrExternalId: string, organisation: string) {
     this.logger.log(`Getting chat by ID: ${idOrExternalId}`);
 
     try {
@@ -439,6 +404,9 @@ export class ChatService {
         whereCondition = {
           id: parseInt(idOrExternalId),
           is_deleted: 0,
+          organisation: {
+            slug: organisation
+          }
         };
       } else {
         // If it's not a number, search by external IDs
@@ -448,6 +416,9 @@ export class ChatService {
             { whatsapp_id: idOrExternalId }
           ],
           is_deleted: 0,
+          organisation: {
+            slug: organisation
+          }
         };
       }
 
@@ -503,7 +474,7 @@ export class ChatService {
 
     try {
       // First, find the chat to make sure it exists
-      const existingChat = await this.getChatById(idOrExternalId);
+      const existingChat = await this.getChatById(idOrExternalId, updateData.organisation);
       if (!existingChat.success) {
         throw new NotFoundException('Chat not found');
       }
@@ -573,33 +544,7 @@ export class ChatService {
 
       this.logger.log(`Chat updated successfully: ${chatId}`);
 
-      // Broadcast chat update via WebSocket, especially for human_handled changes
-      if (updatedChat.organisation_id) {
-        this.logger.debug(`Broadcasting chat update via WebSocket for chat ${chatId}`);
-        await this.chatGateway.broadcastChatUpdate(
-          updatedChat.organisation_id,
-          chatId,
-          {
-            action: "updated",
-            chat: {
-              id: updatedChat.id,
-              status: updatedChat.status,
-              human_handled: updatedChat.human_handled,
-              instagram_id: updatedChat.instagram_id,
-              whatsapp_id: updatedChat.whatsapp_id,
-              unread_messages: updatedChat.unread_messages,
-              updated_at: updatedChat.updated_at,
-              organisation: updatedChat.organisation,
-              agent: updatedChat.agent,
-              lead: updatedChat.lead,
-            },
-            // Track what specific fields were updated for debugging
-            updatedFields: Object.keys(updatePayload),
-            wasHumanHandledUpdated: updateData.human_handled !== undefined && updateData.human_handled !== originalHumanHandled,
-          }
-        );
-        this.logger.debug(`Successfully broadcasted chat update for chat ${chatId}`);
-      }
+      this.logger.log(`Chat update completed for chat ${chatId}`);
 
       return {
         success: true,

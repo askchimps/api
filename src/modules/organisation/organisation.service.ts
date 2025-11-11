@@ -902,19 +902,6 @@ export class OrganisationService {
 
             this.logger.log(`Database queries completed - Found ${chats.length} chats, total: ${totalChats}, open: ${openChats}, with lead: ${chatsWithLead}, without lead: ${chatsWithoutLead}`);
 
-            // Log sample of messages with attachments for debugging
-            if (chats.length > 0) {
-                const sampleChat = chats[0];
-                this.logger.debug(`Sample chat data - ID: ${sampleChat.id}, Messages: ${sampleChat.messages.length}`);
-                if (sampleChat.messages.length > 0) {
-                    const sampleMessage = sampleChat.messages[0];
-                    this.logger.debug(`Sample message - ID: ${sampleMessage.id}, Type: ${sampleMessage.message_type}, Attachments: ${sampleMessage.attachments?.length || 0}`);
-                    if (sampleMessage.attachments && sampleMessage.attachments.length > 0) {
-                        this.logger.debug(`Sample attachment: ${JSON.stringify(sampleMessage.attachments[0])}`);
-                    }
-                }
-            }
-
             // Transform chats data
             this.logger.log(`Transforming ${chats.length} chat records`);
             const transformedChats = chats.map(chat => ({

@@ -16,7 +16,7 @@ export class ChatController {
   constructor(
     private readonly chatService: ChatService,
     private readonly uploadService: UploadService,
-  ) {}
+  ) { }
 
   @Post()
   async createChat(
@@ -24,7 +24,7 @@ export class ChatController {
   ) {
     this.logger.log(`Creating new chat for organisation: ${createChatDto.organisation}`);
     this.logger.debug(`Chat data: ${JSON.stringify(createChatDto)}`);
-    
+
     try {
       const serviceDto: ServiceCreateChatDto = {
         organisation: createChatDto.organisation,
@@ -36,7 +36,7 @@ export class ChatController {
         whatsapp_id: createChatDto.whatsapp_id,
         human_handled: createChatDto.human_handled,
       };
-      
+
       const result = await this.chatService.createChat(serviceDto);
       this.logger.log(`Chat created successfully for organisation: ${createChatDto.organisation}`);
       return result;
@@ -46,7 +46,7 @@ export class ChatController {
     }
   }
 
-  @Post(':id/message')
+  @Post(':id/:org/message')
   async createMessage(
     @Param() params: ChatParamDto,
     @Body() createMessageDto: CreateMessageDto
@@ -54,9 +54,10 @@ export class ChatController {
     const idOrExternalId = params.id;
     this.logger.log(`Creating message for chat: ${idOrExternalId}`);
     this.logger.debug(`Message data: ${JSON.stringify(createMessageDto)}`);
-    
+
     try {
       const serviceDto: ServiceCreateMessageDto = {
+        organisation: createMessageDto.organisation,
         chatId: idOrExternalId,
         role: createMessageDto.role,
         content: createMessageDto.content,
@@ -66,7 +67,7 @@ export class ChatController {
         completion_tokens: createMessageDto.completion_tokens,
         total_cost: createMessageDto.total_cost,
       };
-      
+
       const result = await this.chatService.createMessage(serviceDto);
       this.logger.log(`Message created successfully for chat: ${idOrExternalId}`);
       return result;
@@ -76,7 +77,7 @@ export class ChatController {
     }
   }
 
-  @Post(':id/message/media')
+  @Post(':id/:org/message/media')
   async createMediaMessage(
     @Param() params: ChatParamDto,
     @Body() createMessageDto: CreateMediaMessageDto,
@@ -86,7 +87,7 @@ export class ChatController {
     this.logger.log(`Creating media message for chat: ${idOrExternalId}`);
     this.logger.debug(`Media message data: ${JSON.stringify(createMessageDto)}`);
     this.logger.debug(`Files provided: ${files?.length || 0}`);
-    
+
     if (!files || files.length === 0) {
       this.logger.error('No files provided for media message');
       throw new BadRequestException('No files provided for media message');
@@ -138,6 +139,7 @@ export class ChatController {
 
       // Create message with attachments
       const serviceDto: ServiceCreateMessageDto = {
+        organisation: createMessageDto.organisation,
         chatId: idOrExternalId,
         role: createMessageDto.role,
         content: createMessageDto.content,
@@ -147,7 +149,7 @@ export class ChatController {
         completion_tokens: createMessageDto.completion_tokens,
         total_cost: createMessageDto.total_cost,
       };
-      
+
       const result = await this.chatService.createMessage(serviceDto);
       this.logger.log(`Media message created successfully for chat: ${idOrExternalId}`);
       return result;
@@ -157,30 +159,30 @@ export class ChatController {
     }
   }
 
-  @Get(':id/messages')
+  @Get(':id/:org/messages')
   async getChatMessages(
     @Param() params: ChatParamDto
   ) {
     const chatId = parseInt(params.id);
-    
-    return this.chatService.getChatMessages(chatId);
+
+    return this.chatService.getChatMessages(chatId, params.org);
   }
 
-  @Get(':id')
+  @Get(':id/:org')
   async getChatById(
     @Param() params: ChatParamDto
   ) {
-    return this.chatService.getChatById(params.id);
+    return this.chatService.getChatById(params.id, params.org);
   }
 
-  @Put(':id')
+  @Put(':id/:org')
   async updateChat(
     @Param() params: ChatParamDto,
     @Body() updateChatDto: UpdateChatDto
   ) {
     this.logger.log(`Updating chat: ${params.id}`);
     this.logger.debug(`Update data: ${JSON.stringify(updateChatDto)}`);
-    
+
     try {
       const result = await this.chatService.updateChat(params.id, updateChatDto);
       this.logger.log(`Chat updated successfully: ${params.id}`);

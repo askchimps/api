@@ -22,7 +22,3 @@ export const supabase = registerAs('SUPABASE', () => ({
   SUPABASE_URL: process.env['SUPABASE_URL'],
   SUPABASE_ANON_KEY: process.env['SUPABASE_ANON_KEY'],
 }));
-
-export const websocket = registerAs('WEBSOCKET', () => ({
-  WEBSOCKET_CORS_ORIGIN: process.env['WEBSOCKET_CORS_ORIGIN'] || 'http://localhost:3000',
-}));

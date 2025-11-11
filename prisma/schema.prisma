@@ -47,6 +47,7 @@ enum MESSAGE_TYPE {
   AUDIO
   FILE
   GIF
+  DOCUMENT
 }
 
 model User {
@@ -317,8 +318,8 @@ model Chat {
   organisation_id   Int
   agent_id          Int
   lead_id           Int?
-  instagram_id      String?     @unique
-  whatsapp_id       String?     @unique
+  instagram_id      String?
+  whatsapp_id       String?
   source            CHAT_SOURCE
   status            String
   summary           String?     @db.Text

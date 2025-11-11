@@ -74,6 +74,10 @@ export class CreateChatDto {
 export class CreateMessageDto {
   @IsNotEmpty()
   @IsString()
+  organisation: string;
+
+  @IsNotEmpty()
+  @IsString()
   @IsIn(['user', 'assistant', 'bot'])
   role: 'user' | 'assistant' | 'bot';
 
@@ -110,6 +114,10 @@ export class CreateMessageDto {
 export class CreateMediaMessageDto {
   @IsNotEmpty()
   @IsString()
+  organisation: string;
+
+  @IsNotEmpty()
+  @IsString()
   @IsIn(['user', 'assistant', 'bot'])
   role: 'user' | 'assistant' | 'bot';
 
@@ -141,9 +149,17 @@ export class ChatParamDto {
   @IsNotEmpty()
   @IsString()
   id: string;
+
+  @IsNotEmpty()
+  @IsString()
+  org: string;
 }
 
 export class UpdateChatDto {
+  @IsNotEmpty()
+  @IsString()
+  organisation: string; // Can be organisation slug or ID
+
   @IsOptional()
   @IsString()
   lead?: string; // Can be lead phone number or ID

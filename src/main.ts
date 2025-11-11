@@ -7,14 +7,11 @@ import { ConfigService } from '@modules/common/config/config.service';
 import { PinoLoggerService } from '@modules/common/logger/pinoLogger.service';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { IoAdapter } from '@nestjs/platform-socket.io';
-import { FastifyIoAdapter } from './adapters/fastify-io.adapter';
 import {
   NestFastifyApplication,
   FastifyAdapter,
 } from '@nestjs/platform-fastify';
 import { AppModule } from './app/app.module';
-import { ChatGateway } from './modules/chat/chat.gateway';
 import { ResponseInterceptor } from '@interceptors/response.interceptor';
 
 declare const module: any;
@@ -33,167 +30,6 @@ async function bootstrap() {
 
   const logger = fastifyAdapter.get(PinoLoggerService);
   logger.setContext(bootstrap.name);
-
-  // ==================================================
-  // configureWebSocketAdapter
-  // ==================================================
-  fastifyAdapter.useWebSocketAdapter(new IoAdapter(fastifyAdapter));
-
-  // Initialize WebSocket server manually for testing
-  const { Server } = require('socket.io');
-  const socketServer = new Server(4023, {
-    transports: ['websocket', 'polling'],
-  });
-
-  // Store connected clients for debugging
-  const connectedClients = new Map();
-
-  socketServer.on('connection', (socket: any) => {
-    logger.log(`🔗 Manual WebSocket client connected: ${socket.id}`);
-    connectedClients.set(socket.id, socket);
-
-    socket.on('join-organisation', (data: any) => {
-      logger.log(`📤 Manual join-organisation: ${JSON.stringify(data)}`);
-      socket.join(`org-${data.organisationId}`);
-      socket.emit('joined-organisation', { organisationId: data.organisationId });
-
-      // Store organisation context on socket
-      socket.organisationId = data.organisationId;
-      socket.userId = data.userId;
-
-      // Log room info
-      const room = socketServer.sockets.adapter.rooms.get(`org-${data.organisationId}`);
-      logger.log(`👥 Room org-${data.organisationId} now has ${room ? room.size : 0} clients`);
-    });
-
-    socket.on('mark-chat-read', (data: any) => {
-      logger.log(`📖 Manual mark-chat-read: ${JSON.stringify(data)}`);
-      
-      // Emit confirmation back to client
-      socket.emit('chat-marked-read', {
-        success: true,
-        chatId: data.chatId,
-        timestamp: new Date().toISOString()
-      });
-
-      // Broadcast to all clients in the organisation room
-      if (socket.organisationId) {
-        const roomName = `org-${socket.organisationId}`;
-        const room = socketServer.sockets.adapter.rooms.get(roomName);
-        const clientCount = room ? room.size : 0;
-
-        if (clientCount > 0) {
-          socketServer.to(roomName).emit('chat-read-updated', {
-            chatId: data.chatId,
-            unread_count: 0,
-            timestamp: new Date().toISOString()
-          });
-          logger.log(`📖 Manual server broadcasted chat-read-updated to ${clientCount} clients in room ${roomName}`);
-        }
-      }
-    });
-
-    socket.on('disconnect', () => {
-      logger.log(`❌ Manual WebSocket client disconnected: ${socket.id}`);
-      connectedClients.delete(socket.id);
-    });
-
-    socket.on('error', (error: any) => {
-      logger.error(`🚨 Manual WebSocket client error: ${error}`);
-    });
-  });
-
-  // Add a method to broadcast messages from the manual server
-  (socketServer as any).broadcastNewMessage = (organisationId: number, chatId: number, message: any) => {
-    const roomName = `org-${organisationId}`;
-    const room = socketServer.sockets.adapter.rooms.get(roomName);
-    const clientCount = room ? room.size : 0;
-
-    logger.log(`📤 Manual server broadcasting to room ${roomName} (${clientCount} clients)`);
-
-    if (clientCount > 0) {
-      socketServer.to(roomName).emit('new-message', {
-        chatId,
-        message,
-        timestamp: new Date().toISOString(),
-      });
-      logger.log(`✅ Manual server broadcasted message to ${clientCount} clients`);
-    } else {
-      logger.log(`📭 Manual server: No clients in room ${roomName}`);
-    }
-  };
-
-  // Add a method to broadcast new chat creation from the manual server
-  (socketServer as any).broadcastNewChat = (organisationId: number, chat: any) => {
-    const roomName = `org-${organisationId}`;
-    const room = socketServer.sockets.adapter.rooms.get(roomName);
-    const clientCount = room ? room.size : 0;
-
-    logger.log(`📤 Manual server broadcasting new chat ${chat.id} to room ${roomName} (${clientCount} clients)`);
-
-    if (clientCount > 0) {
-      socketServer.to(roomName).emit('new-chat', {
-        action: "created",
-        chat,
-        timestamp: new Date().toISOString(),
-      });
-      logger.log(`✅ Manual server broadcasted new chat to ${clientCount} clients`);
-    } else {
-      logger.log(`📭 Manual server: No clients in room ${roomName}`);
-    }
-  };
-
-  // Add a method to broadcast chat updates from the manual server
-  (socketServer as any).broadcastChatUpdate = (organisationId: number, chatId: number, updateData: any) => {
-    const roomName = `org-${organisationId}`;
-    const room = socketServer.sockets.adapter.rooms.get(roomName);
-    const clientCount = room ? room.size : 0;
-
-    logger.log(`📤 Manual server broadcasting chat update ${chatId} to room ${roomName} (${clientCount} clients)`);
-
-    if (clientCount > 0) {
-      socketServer.to(roomName).emit('chat-updated', {
-        chatId,
-        updateData,
-        timestamp: new Date().toISOString(),
-      });
-      logger.log(`✅ Manual server broadcasted chat update to ${clientCount} clients`);
-    } else {
-      logger.log(`📭 Manual server: No clients in room ${roomName}`);
-    }
-  };
-
-  logger.log(`🚀 Manual WebSocket server started on port ${port}`);
-
-  // Assign the manual Socket.IO server instance to ChatGateway so broadcasts use it
-  try {
-    const chatGateway = fastifyAdapter.get(ChatGateway);
-    if (chatGateway) {
-      // @ts-ignore - assign runtime server instance
-      chatGateway.server = socketServer;
-
-      // Override the broadcastNewMessage method to use manual server
-      chatGateway.broadcastNewMessage = (organisationId: number, chatId: number, message: any) => {
-        return (socketServer as any).broadcastNewMessage(organisationId, chatId, message);
-      };
-
-      // Override the broadcastNewChat method to use manual server
-      chatGateway.broadcastNewChat = (organisationId: number, chat: any) => {
-        return (socketServer as any).broadcastNewChat(organisationId, chat);
-      };
-
-      // Override the broadcastChatUpdate method to use manual server
-      chatGateway.broadcastChatUpdate = (organisationId: number, chatId: number, updateData: any) => {
-        return (socketServer as any).broadcastChatUpdate(organisationId, chatId, updateData);
-      };
-
-      logger.log('🔗 Assigned manual Socket.IO server and broadcast methods to ChatGateway');
-    } else {
-      logger.warn('⚠️ ChatGateway instance not found to assign Socket.IO server');
-    }
-  } catch (err) {
-    logger.error('Error assigning manual Socket.IO server to ChatGateway', err);
-  }
 
   // ==================================================
   // configureNestAPIVersioning
