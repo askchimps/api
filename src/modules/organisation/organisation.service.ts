@@ -1463,8 +1463,8 @@ export class OrganisationService {
             orderBy: {
                 started_at: 'desc'
             },
-            skip: (page - 1) * limit,
-            take: limit
+            // skip: (page - 1) * limit,
+            // take: limit
         });
 
         return {
@@ -1812,7 +1812,6 @@ export class OrganisationService {
                     orderBy: {
                         started_at: 'desc'
                     },
-                    take: 1
                 },
                 chats: {
                     where: {
@@ -1827,7 +1826,6 @@ export class OrganisationService {
                     orderBy: {
                         created_at: 'desc'
                     },
-                    take: 1
                 }
             },
             orderBy: {
