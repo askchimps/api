@@ -1370,8 +1370,8 @@ export class OrganisationService {
             orderBy: {
                 started_at: 'desc'
             },
-            skip: (page - 1) * limit,
-            take: limit
+            // skip: (page - 1) * limit,
+            // take: limit
         });
 
         return {
