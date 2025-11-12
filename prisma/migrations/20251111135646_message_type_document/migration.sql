@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "public"."MESSAGE_TYPE" ADD VALUE 'DOCUMENT';

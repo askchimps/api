@@ -417,8 +417,8 @@ export class LeadService {
                 }
             }
 
-            // Handle Zoho Lead creation if provided
-            if (zoho_lead && createdZohoLeadOwner) {
+            // Handle Zoho Lead creation/update if provided
+            if (zoho_lead) {
                 const { id: zoho_lead_id, ...zohoLeadData } = zoho_lead;
 
                 if (zoho_lead_id) {
@@ -427,22 +427,26 @@ export class LeadService {
                         where: { id: zoho_lead_id }
                     });
 
+                    let zohoLeadCreateData: any = {
+                        ...zohoLeadData,
+                        lead_id: lead.id,
+                    };
+
+                    // Only add lead_owner_id if we have a created/updated owner
+                    if (createdZohoLeadOwner) {
+                        zohoLeadCreateData.lead_owner_id = createdZohoLeadOwner.id;
+                    }
+
                     if (existingZohoLead) {
                         await prisma.zohoLead.update({
                             where: { id: zoho_lead_id },
-                            data: {
-                                ...zohoLeadData,
-                                lead_id: lead.id,
-                                lead_owner_id: createdZohoLeadOwner.id
-                            }
+                            data: zohoLeadCreateData
                         });
                     } else {
                         await prisma.zohoLead.create({
                             data: {
                                 id: zoho_lead_id,
-                                ...zohoLeadData,
-                                lead_id: lead.id,
-                                lead_owner_id: createdZohoLeadOwner.id
+                                ...zohoLeadCreateData
                             }
                         });
                     }

@@ -396,6 +396,10 @@ export class OrganisationService {
                         id: chat.id,
                         status: chat.status,
                         source: chat.source,
+                        instagram_id: chat.instagram_id,
+                        whatsapp_id: chat.whatsapp_id,
+                        human_handled: chat.human_handled,
+                        unread_messages: chat.unread_messages,
                         prompt_tokens: chat.prompt_tokens,
                         completion_tokens: chat.completion_tokens,
                         total_cost: chat.total_cost,
@@ -706,194 +710,260 @@ export class OrganisationService {
         filters: ChatsFilterParams,
         isSuperAdmin: boolean = false
     ) {
-        const id = Number(idOrSlug);
-        const slug = idOrSlug;
+        this.logger.log(`Starting getOrganisationChats for: ${idOrSlug}, filters: ${JSON.stringify(filters)}, isSuperAdmin: ${isSuperAdmin}`);
 
-        // Find organisation by ID or slug
-        const organisation = await this.prisma.organisation.findFirst({
-            where: {
-                OR: [
-                    { id: id },
-                    { slug: slug }
-                ]
-            }
-        });
+        try {
+            const id = Number(idOrSlug);
+            const slug = idOrSlug;
 
-        if (!organisation) {
-            throw new NotFoundException('Organisation not found');
-        }
+            this.logger.log(`Parsed ID: ${id}, Slug: ${slug}`);
 
-        // Check permissions
-        if (!isSuperAdmin) {
-            if (organisation.is_deleted === 1 || organisation.is_disabled === 1) {
+            // Find organisation by ID or slug
+            this.logger.log(`Searching for organisation with ID: ${id} or slug: ${slug}`);
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    OR: [
+                        { id: isNaN(id) ? undefined : id },
+                        { slug: slug }
+                    ]
+                }
+            });
+
+            if (!organisation) {
+                this.logger.error(`Organisation not found for identifier: ${idOrSlug}`);
                 throw new NotFoundException('Organisation not found');
             }
-        }
 
-        // Set date range based on provided parameters  
-        const now = new Date();
-        let start: Date | undefined;
-        let end: Date | undefined;
+            this.logger.log(`Found organisation: ${organisation.name} (ID: ${organisation.id})`);
 
-        if (filters.startDate && filters.endDate) {
-            start = new Date(filters.startDate);
-            end = new Date(filters.endDate);
-        } else if (filters.startDate && !filters.endDate) {
-            start = new Date(filters.startDate);
-            end = undefined;
-        } else if (!filters.startDate && filters.endDate) {
-            start = undefined;
-            end = new Date(filters.endDate);
-        } else {
-            // Default to current month
-            start = new Date(now.getFullYear(), now.getMonth(), 1);
-            end = new Date(now);
-        }
+            // Check permissions
+            if (!isSuperAdmin) {
+                this.logger.log(`Checking permissions for non-super admin`);
+                if (organisation.is_deleted === 1 || organisation.is_disabled === 1) {
+                    this.logger.error(`Organisation is deleted or disabled: deleted=${organisation.is_deleted}, disabled=${organisation.is_disabled}`);
+                    throw new NotFoundException('Organisation not found');
+                }
+            }
 
-        // Set time boundaries
-        if (end) end.setHours(23, 59, 59, 999);
-        if (start) start.setHours(0, 0, 0, 0);
+            // Set date range based on provided parameters  
+            const now = new Date();
+            let start: Date | undefined;
+            let end: Date | undefined;
 
-        const orgId = organisation.id;
+            this.logger.log(`Processing date filters: startDate=${filters.startDate}, endDate=${filters.endDate}`);
 
-        // Build where condition for chats
-        const whereCondition: ChatWhereInput = {
-            organisation_id: orgId,
-            is_deleted: 0,
-        };
+            if (filters.startDate && filters.endDate) {
+                start = new Date(filters.startDate);
+                end = new Date(filters.endDate);
+                this.logger.log(`Both dates provided: ${start.toISOString()} to ${end.toISOString()}`);
+            } else if (filters.startDate && !filters.endDate) {
+                start = new Date(filters.startDate);
+                end = undefined;
+                this.logger.log(`Only start date provided: ${start.toISOString()}`);
+            } else if (!filters.startDate && filters.endDate) {
+                start = undefined;
+                end = new Date(filters.endDate);
+                this.logger.log(`Only end date provided: ${end.toISOString()}`);
+            } else {
+                // Default to current month
+                start = new Date(now.getFullYear(), now.getMonth(), 1);
+                end = new Date(now);
+                this.logger.log(`No dates provided, using current month: ${start.toISOString()} to ${end.toISOString()}`);
+            }
 
-        // Apply date filters
-        if (start || end) {
-            whereCondition.created_at = {};
-            if (start) whereCondition.created_at.gte = start;
-            if (end) whereCondition.created_at.lte = end;
-        }
+            // Set time boundaries
+            if (end) {
+                end.setHours(23, 59, 59, 999);
+                this.logger.log(`Set end time boundaries: ${end.toISOString()}`);
+            }
+            if (start) {
+                start.setHours(0, 0, 0, 0);
+                this.logger.log(`Set start time boundaries: ${start.toISOString()}`);
+            }
 
-        // Apply status filter
-        if (filters.status) {
-            whereCondition.status = filters.status;
-        }
+            const orgId = organisation.id;
+            this.logger.log(`Processing chats for organisation ID: ${orgId}`);
 
-        // Apply source filter
-        if (filters.source) {
-            whereCondition.source = filters.source as any;
-        }
+            // Build where condition for chats
+            const whereCondition: ChatWhereInput = {
+                organisation_id: orgId,
+                is_deleted: 0,
+            };
 
-        // Calculate pagination
-        const skip = (filters.page - 1) * filters.limit;
+            // Apply date filters
+            if (start || end) {
+                whereCondition.created_at = {};
+                if (start) whereCondition.created_at.gte = start;
+                if (end) whereCondition.created_at.lte = end;
+                this.logger.log(`Applied date filters to whereCondition`);
+            }
 
-        // Get chats with first two messages and lead info
-        const [chats, totalChats, openChats, chatsWithLead, chatsWithoutLead] = await Promise.all([
-            this.prisma.chat.findMany({
-                where: whereCondition,
-                include: {
-                    lead: {
-                        select: {
-                            id: true,
-                            first_name: true,
-                            last_name: true,
+            // Apply status filter
+            if (filters.status) {
+                whereCondition.status = filters.status;
+                this.logger.log(`Applied status filter: ${filters.status}`);
+            }
+
+            // Apply source filter
+            if (filters.source) {
+                whereCondition.source = filters.source as any;
+                this.logger.log(`Applied source filter: ${filters.source}`);
+            }
+
+            this.logger.log(`Final whereCondition: ${JSON.stringify(whereCondition)}`);
+
+            // Calculate pagination
+            const skip = (filters.page - 1) * filters.limit;
+            this.logger.log(`Pagination: page=${filters.page}, limit=${filters.limit}, skip=${skip}`);
+
+            // Get chats with first two messages and lead info
+            this.logger.log(`Starting parallel database queries`);
+            const [chats, totalChats, openChats, chatsWithLead, chatsWithoutLead] = await Promise.all([
+                this.prisma.chat.findMany({
+                    where: whereCondition,
+                    include: {
+                        lead: {
+                            select: {
+                                id: true,
+                                first_name: true,
+                                last_name: true,
+                            },
+                        },
+                        messages: {
+                            select: {
+                                id: true,
+                                role: true,
+                                content: true,
+                                message_type: true,
+                                prompt_tokens: true,
+                                completion_tokens: true,
+                                total_cost: true,
+                                created_at: true,
+                                updated_at: true,
+                                attachments: {
+                                    select: {
+                                        id: true,
+                                        file_url: true,
+                                        file_name: true,
+                                        file_size: true,
+                                        file_type: true,
+                                        width: true,
+                                        height: true,
+                                        duration: true,
+                                        thumbnail_url: true,
+                                        created_at: true,
+                                    },
+                                },
+                            },
+                            orderBy: {
+                                created_at: 'asc',
+                            },
+                            take: 2, // First two messages
+                        },
+                        agent: {
+                            select: {
+                                id: true,
+                                name: true,
+                            },
                         },
                     },
-                    messages: {
-                        select: {
-                            id: true,
-                            role: true,
-                            content: true,
-                            created_at: true,
-                        },
-                        orderBy: {
-                            created_at: 'asc',
-                        },
-                        take: 2, // First two messages
+                    orderBy: {
+                        created_at: 'desc',
                     },
-                    agent: {
-                        select: {
-                            id: true,
-                            name: true,
-                        },
+                    skip,
+                    take: filters.limit,
+                }),
+                // Total chats count
+                this.prisma.chat.count({
+                    where: whereCondition,
+                }),
+                // Open chats count
+                this.prisma.chat.count({
+                    where: {
+                        ...whereCondition,
+                        status: 'open',
                     },
-                },
-                orderBy: {
-                    created_at: 'desc',
-                },
-                skip,
-                take: filters.limit,
-            }),
-            // Total chats count
-            this.prisma.chat.count({
-                where: whereCondition,
-            }),
-            // Open chats count
-            this.prisma.chat.count({
-                where: {
-                    ...whereCondition,
-                    status: 'open',
-                },
-            }),
-            // Chats with lead count
-            this.prisma.chat.count({
-                where: {
-                    ...whereCondition,
-                    lead_id: { not: null },
-                },
-            }),
-            // Chats without lead count
-            this.prisma.chat.count({
-                where: {
-                    ...whereCondition,
-                    lead_id: null,
-                },
-            }),
-        ]);
+                }),
+                // Chats with lead count
+                this.prisma.chat.count({
+                    where: {
+                        ...whereCondition,
+                        lead_id: { not: null },
+                    },
+                }),
+                // Chats without lead count
+                this.prisma.chat.count({
+                    where: {
+                        ...whereCondition,
+                        lead_id: null,
+                    },
+                }),
+            ]);
 
-        // Transform chats data
-        const transformedChats = chats.map(chat => ({
-            id: chat.id,
-            status: chat.status,
-            source: chat.source,
-            created_at: chat.created_at,
-            updated_at: chat.updated_at,
-            name: chat.lead
-                ? `${chat.lead.first_name || ''} ${chat.lead.last_name || ''}`.trim() || null
-                : null,
-            lead_id: chat.lead_id,
-            lead: chat.lead, // Complete lead details
-            agent: chat.agent,
-            messages: chat.messages,
-            total_cost: chat.total_cost,
-        }));
+            this.logger.log(`Database queries completed - Found ${chats.length} chats, total: ${totalChats}, open: ${openChats}, with lead: ${chatsWithLead}, without lead: ${chatsWithoutLead}`);
 
-        return {
-            organisation: {
-                id: organisation.id,
-                name: organisation.name,
-                slug: organisation.slug,
-            },
-            chats: transformedChats,
-            summary: {
-                totalChats,
-                openChats,
-                chatsWithLead,
-                chatsWithoutLead,
-            },
-            pagination: {
-                page: filters.page,
-                limit: filters.limit,
-                total: totalChats,
-                totalPages: Math.ceil(totalChats / filters.limit),
-            },
-            filters: {
-                startDate: start ? start.toISOString().split('T')[0] : null,
-                endDate: end ? end.toISOString().split('T')[0] : null,
-                status: filters.status || null,
-                source: filters.source || null,
-            },
-        };
+            // Transform chats data
+            this.logger.log(`Transforming ${chats.length} chat records`);
+            const transformedChats = chats.map(chat => ({
+                id: chat.id,
+                status: chat.status,
+                source: chat.source,
+                instagram_id: chat.instagram_id,
+                whatsapp_id: chat.whatsapp_id,
+                human_handled: chat.human_handled,
+                unread_messages: chat.unread_messages,
+                created_at: chat.created_at,
+                updated_at: chat.updated_at,
+                name: chat.lead
+                    ? `${chat.lead.first_name || ''} ${chat.lead.last_name || ''}`.trim() || null
+                    : null,
+                lead_id: chat.lead_id,
+                lead: chat.lead, // Complete lead details
+                agent: chat.agent,
+                messages: chat.messages,
+                total_cost: chat.total_cost,
+            }));
+
+            const result = {
+                organisation: {
+                    id: organisation.id,
+                    name: organisation.name,
+                    slug: organisation.slug,
+                },
+                chats: transformedChats,
+                summary: {
+                    totalChats,
+                    openChats,
+                    chatsWithLead,
+                    chatsWithoutLead,
+                },
+                pagination: {
+                    page: filters.page,
+                    limit: filters.limit,
+                    total: totalChats,
+                    totalPages: Math.ceil(totalChats / filters.limit),
+                },
+                filters: {
+                    startDate: start ? start.toISOString().split('T')[0] : null,
+                    endDate: end ? end.toISOString().split('T')[0] : null,
+                    status: filters.status || null,
+                    source: filters.source || null,
+                },
+            };
+
+            this.logger.log(`Successfully completed getOrganisationChats for ${idOrSlug} - returning ${transformedChats.length} chats`);
+            return result;
+
+        } catch (error) {
+            this.logger.error(`Error in getOrganisationChats for ${idOrSlug}: ${error.message}`, error.stack);
+            this.logger.error(`Filters that caused error: ${JSON.stringify(filters)}`);
+            throw error;
+        }
     }
 
     async getChatDetails(
         idOrSlug: string,
-        chatId: number,
+        idIrExternalId: string,
         isSuperAdmin: boolean = false
     ) {
         const id = Number(idOrSlug);
@@ -903,7 +973,7 @@ export class OrganisationService {
         const organisation = await this.prisma.organisation.findFirst({
             where: {
                 OR: [
-                    { id: id },
+                    { id: isNaN(id) ? undefined : id },
                     { slug: slug }
                 ]
             }
@@ -925,7 +995,11 @@ export class OrganisationService {
         // Get the specific chat with all details
         const chat = await this.prisma.chat.findFirst({
             where: {
-                id: chatId,
+                OR: [
+                    { id: idIrExternalId.length > 6 ? undefined : parseInt(idIrExternalId) },
+                    { whatsapp_id: idIrExternalId },
+                    { instagram_id: idIrExternalId },
+                ],
                 organisation_id: orgId,
                 is_deleted: 0,
             },
@@ -971,11 +1045,26 @@ export class OrganisationService {
                         id: true,
                         role: true,
                         content: true,
+                        message_type: true,
                         prompt_tokens: true,
                         completion_tokens: true,
                         total_cost: true,
                         created_at: true,
                         updated_at: true,
+                        attachments: {
+                            select: {
+                                id: true,
+                                file_url: true,
+                                file_name: true,
+                                file_size: true,
+                                file_type: true,
+                                width: true,
+                                height: true,
+                                duration: true,
+                                thumbnail_url: true,
+                                created_at: true,
+                            },
+                        },
                     },
                     orderBy: {
                         created_at: 'asc', // Chronological order
@@ -1032,6 +1121,10 @@ export class OrganisationService {
                 id: chat.id,
                 status: chat.status,
                 source: chat.source,
+                instagram_id: chat.instagram_id,
+                whatsapp_id: chat.whatsapp_id,
+                human_handled: chat.human_handled,
+                unread_messages: chat.unread_messages,
                 summary: chat.summary,
                 analysis: chat.analysis,
                 prompt_tokens: chat.prompt_tokens,
@@ -1058,7 +1151,7 @@ export class OrganisationService {
                 totalAssociatedCosts,
                 grandTotalCost,
                 averageMessageLength: messageCount > 0
-                    ? Math.round(chat.messages.reduce((sum, msg) => sum + msg.content.length, 0) / messageCount)
+                    ? Math.round(chat.messages.reduce((sum, msg) => sum + (msg.content?.length || 0), 0) / messageCount)
                     : 0,
             },
         };
@@ -2020,6 +2113,10 @@ export class OrganisationService {
                 id: chat.id,
                 status: chat.status,
                 source: chat.source,
+                instagram_id: chat.instagram_id,
+                whatsapp_id: chat.whatsapp_id,
+                human_handled: chat.human_handled,
+                unread_messages: chat.unread_messages,
                 summary: chat.summary,
                 analysis: chat.analysis,
                 prompt_tokens: chat.prompt_tokens,

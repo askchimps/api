@@ -88,7 +88,6 @@ export class OrganisationController {
         );
     }
 
-    @UseGuards(JwtAuthGuard)
     @Get(':id_or_slug/chats')
     async getOrganisationChats(
         @Param() paramDto: OrganisationParamDto,
@@ -110,16 +109,17 @@ export class OrganisationController {
         );
     }
 
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(HeaderAuthGuard)
     @Get(':id_or_slug/chat/:id')
     async getChatDetails(
-        @Param() paramDto: OrganisationDetailsParamDto,
+        @Param('id_or_slug') id_or_slug: string,
+        @Param('id') id: string,
         @Req() req: AuthRequest
     ) {
         const isSuperAdmin = req.user?.is_super_admin === 1;
         return this.organisationService.getChatDetails(
-            paramDto.id_or_slug,
-            paramDto.id,
+            id_or_slug,
+            id,
             isSuperAdmin
         );
     }

@@ -14,7 +14,9 @@ import { UserModule } from '@modules/user/user.module';
 import { OrganisationModule } from '@modules/organisation/organisation.module';
 import { LeadModule } from '@modules/lead/lead.module';
 import { CallModule } from '@modules/call/call.module';
+import { ChatModule } from '@modules/chat/chat.module';
 import { CreditHistoryModule } from '@modules/credit-history/credit-history.module';
+import { UploadModule } from '@modules/upload/upload.module';
 
 type NestModuleImport =
   | Type<any>
@@ -29,7 +31,9 @@ const appModules: NestModuleImport[] = [
   OrganisationModule,
   LeadModule,
   CallModule,
+  ChatModule,
   CreditHistoryModule,
+  UploadModule,
 ];
 
 // Infrastructure Modules (DB, config) used by the server
