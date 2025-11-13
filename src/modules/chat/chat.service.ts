@@ -202,6 +202,7 @@ export class ChatService {
           id: true,
           name: true,
           slug: true,
+          chat_credits: true,
         }
       });
 
@@ -305,6 +306,29 @@ export class ChatService {
       });
 
       this.logger.debug(`[${chatId}] Chat created in database: ${chat.id}`);
+
+      this.logger.log(`[${chatId}] Updating organisation credits`);
+      await this.prisma.organisation.update({
+        where: { id: organisation.id },
+        data: {
+          chat_credits: { decrement: 1 },
+        },
+      });
+      this.logger.log(`[${chatId}] Organisation credits updated successfully`);
+
+      this.logger.log(`[${chatId}] Updating credit history`);
+      const creditHistory = await this.prisma.creditHistory.create({
+        data: {
+          organisation_id: organisation.id,
+          change_type: 'decrement',
+          reason: 'Credits decremented - chat credits decreased by 1 on chat creation',
+          change_field: 'chat_credits',
+          change_amount: 1,
+          prev_value: organisation.chat_credits,
+          new_value: organisation.chat_credits - 1,
+        },
+      });
+      this.logger.log(`[${chatId}] Credit history updated successfully: ${creditHistory.id}`);
 
       this.logger.log(`[${chatId}] Chat created successfully: ${chat.id}`);
       return {
