@@ -27,6 +27,7 @@ export class ChatController {
 
     try {
       const serviceDto: ServiceCreateChatDto = {
+        name: createChatDto.name,
         organisation: createChatDto.organisation,
         agent: createChatDto.agent,
         lead: createChatDto.lead,
