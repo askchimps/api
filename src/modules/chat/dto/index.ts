@@ -49,6 +49,10 @@ export class CreateChatDto {
   @IsString()
   lead?: string; // Can be lead phone number or ID (optional)
 
+  @IsOptional()
+  @IsString()
+  name?: string;
+
   @IsNotEmpty()
   @IsEnum(CHAT_SOURCE)
   source: CHAT_SOURCE;
@@ -163,6 +167,10 @@ export class UpdateChatDto {
   @IsOptional()
   @IsString()
   lead?: string; // Can be lead phone number or ID
+
+  @IsOptional()
+  @IsString()
+  name?: string;
 
   @IsOptional()
   @IsString()

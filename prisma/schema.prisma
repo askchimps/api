@@ -318,6 +318,7 @@ model Chat {
   organisation_id   Int
   agent_id          Int
   lead_id           Int?
+  name              String?
   instagram_id      String?
   whatsapp_id       String?
   source            CHAT_SOURCE

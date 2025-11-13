@@ -29,6 +29,7 @@ export interface CreateChatDto {
   organisation: string; // Can be organisation slug or ID
   agent: string; // Can be agent slug or ID
   lead?: string; // Can be lead phone number or ID (optional)
+  name?: string;
   source: 'WHATSAPP' | 'INSTAGRAM';
   status: string;
   instagram_id?: string; // Unique Instagram chat identifier
@@ -268,6 +269,7 @@ export class ChatService {
           organisation_id: organisation.id,
           agent_id: agent.id,
           lead_id: lead?.id || null,
+          name: createChatData.name || null,
           source: createChatData.source,
           status: createChatData.status,
           instagram_id: createChatData.instagram_id || null,
@@ -313,6 +315,8 @@ export class ChatService {
             id: chat.id,
             status: chat.status,
             source: chat.source,
+            name: chat.name,
+            human_handled: chat.human_handled,
             unread_messages: chat.unread_messages,
             created_at: chat.created_at,
             updated_at: chat.updated_at,

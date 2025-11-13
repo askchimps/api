@@ -916,7 +916,7 @@ export class OrganisationService {
                 updated_at: chat.updated_at,
                 name: chat.lead
                     ? `${chat.lead.first_name || ''} ${chat.lead.last_name || ''}`.trim() || null
-                    : null,
+                    : chat.name || null,
                 lead_id: chat.lead_id,
                 lead: chat.lead, // Complete lead details
                 agent: chat.agent,
@@ -1134,7 +1134,7 @@ export class OrganisationService {
                 updated_at: chat.updated_at,
                 name: chat.lead
                     ? `${chat.lead.first_name || ''} ${chat.lead.last_name || ''}`.trim() || null
-                    : null,
+                    : chat.name || null,
                 // Duration in milliseconds (null if no messages)
                 duration: chatDuration,
             },
