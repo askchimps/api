@@ -858,7 +858,7 @@ export class OrganisationService {
                             orderBy: {
                                 created_at: 'asc',
                             },
-                            take: 2, // First two messages
+                            take: 5, // First two messages
                         },
                         agent: {
                             select: {
@@ -1383,6 +1383,7 @@ export class OrganisationService {
             where: {
                 organisation_id: orgId,
                 is_deleted: 0,
+                ...(status ? { status: status } : {}),
                 ...(start_date || end_date ? {
                     started_at: {
                         ...(start_date ? { gte: new Date(start_date) } : {}),
@@ -1463,24 +1464,49 @@ export class OrganisationService {
             orderBy: {
                 started_at: 'desc'
             },
-            // skip: (page - 1) * limit,
-            // take: limit
+            skip: (page - 1) * limit,
+            take: limit
         });
+
+        // Get unique statuses for calls
+        const statusesResult = await this.prisma.call.findMany({
+            where: {
+                organisation_id: orgId,
+                is_deleted: 0,
+                status: {
+                    not: ''
+                }
+            },
+            select: {
+                status: true
+            },
+            distinct: ['status']
+        });
+
+        // Format as label-value arrays
+        const call_statuses = statusesResult
+            .filter(item => item.status)
+            .map(item => ({
+                label: item.status.charAt(0).toUpperCase() + item.status.slice(1),
+                value: item.status
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label));
 
         return {
             calls,
             stats: {
                 total_calls: totalCalls,
-                missed_calls: missedCalls,
-                active_calls: activeCalls,
-                disconnected_calls: disconnectedCalls
+                missed_calls: status && status !== "missed" ? 0 : missedCalls,
+                active_calls: status && status !== "active" ? 0 : activeCalls,
+                disconnected_calls: status && status !== "disconnected" ? 0 : disconnectedCalls
             },
             pagination: {
                 current_page: page,
                 per_page: limit,
                 total: total,
                 total_pages: Math.ceil(total / limit)
-            }
+            },
+            statuses: call_statuses
         };
     }
 
@@ -1640,7 +1666,7 @@ export class OrganisationService {
         filters: LeadsFilterParams,
         isSuperAdmin: boolean = false
     ) {
-        const { start_date, end_date, status, source, is_indian, page = 1, limit = 1000 } = filters;
+        const { start_date, end_date, status, source, is_indian, zoho_status, zoho_lead_owner, page = 1, limit = 1000 } = filters;
 
         // Find organisation by id or slug
         const organisation = await this.prisma.organisation.findFirst({
@@ -1666,8 +1692,39 @@ export class OrganisationService {
                     id: orgId
                 }
             },
+            zoho_lead: {
+                is_deleted: 0
+            },
             is_deleted: 0
         };
+        // Zoho status filter
+        if (zoho_status) {
+            whereCondition = {
+                ...whereCondition,
+                zoho_lead: {
+                    status: zoho_status
+                }
+            };
+        }
+        // Zoho lead owner filter
+        if (zoho_lead_owner) {
+            whereCondition = {
+                ...whereCondition,
+                zoho_lead: {
+                    lead_owner_id: zoho_lead_owner.toString()
+                }
+            };
+        }
+
+        if (zoho_status && zoho_lead_owner) {
+            whereCondition = {
+                ...whereCondition,
+                zoho_lead: {
+                    status: zoho_status,
+                    lead_owner_id: zoho_lead_owner.toString()
+                }
+            };
+        }
 
         // Date filter (using created_at)
         if (start_date || end_date) {
@@ -1702,75 +1759,50 @@ export class OrganisationService {
             where: whereCondition
         });
 
-        // Calculate stats
+        // Helper to build stats filter
+        const statsBaseFilter: any = {
+            organisations: { some: { id: orgId } },
+            is_deleted: 0
+        };
+        if (start_date || end_date) {
+            statsBaseFilter.created_at = {};
+            if (start_date) statsBaseFilter.created_at.gte = new Date(start_date);
+            if (end_date) statsBaseFilter.created_at.lte = new Date(end_date + 'T23:59:59.999Z');
+        }
+        if (source) statsBaseFilter.source = source;
+        if (is_indian !== undefined) statsBaseFilter.is_indian = is_indian;
+        if (zoho_status) statsBaseFilter.zoho_lead = { ...statsBaseFilter.zoho_lead, status: zoho_status };
+        if (zoho_lead_owner) statsBaseFilter.zoho_lead = { ...statsBaseFilter.zoho_lead, lead_owner: { id: zoho_lead_owner } };
+
+        // totalLeads: all matching
         const totalLeads = await this.prisma.lead.count({
             where: {
-                organisations: {
-                    some: {
-                        id: orgId
-                    }
-                },
-                is_deleted: 0,
-                ...(start_date || end_date ? {
-                    created_at: {
-                        ...(start_date ? { gte: new Date(start_date) } : {}),
-                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
-                    }
-                } : {})
+                ...statsBaseFilter,
+                ...(status ? { status } : {})
             }
         });
 
+        // newLeads: status 'new' + all filters
         const newLeads = await this.prisma.lead.count({
             where: {
-                organisations: {
-                    some: {
-                        id: orgId
-                    }
-                },
-                is_deleted: 0,
-                status: 'new',
-                ...(start_date || end_date ? {
-                    created_at: {
-                        ...(start_date ? { gte: new Date(start_date) } : {}),
-                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
-                    }
-                } : {})
+                ...statsBaseFilter,
+                status: 'new'
             }
         });
 
+        // qualifiedLeads: status 'qualified' + all filters
         const qualifiedLeads = await this.prisma.lead.count({
             where: {
-                organisations: {
-                    some: {
-                        id: orgId
-                    }
-                },
-                is_deleted: 0,
-                status: 'qualified',
-                ...(start_date || end_date ? {
-                    created_at: {
-                        ...(start_date ? { gte: new Date(start_date) } : {}),
-                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
-                    }
-                } : {})
+                ...statsBaseFilter,
+                status: 'qualified'
             }
         });
 
+        // junkLeads: status 'junk' + all filters
         const junkLeads = await this.prisma.lead.count({
             where: {
-                organisations: {
-                    some: {
-                        id: orgId
-                    }
-                },
-                is_deleted: 0,
-                status: 'junk',
-                ...(start_date || end_date ? {
-                    created_at: {
-                        ...(start_date ? { gte: new Date(start_date) } : {}),
-                        ...(end_date ? { lte: new Date(end_date + 'T23:59:59.999Z') } : {})
-                    }
-                } : {})
+                ...statsBaseFilter,
+                status: 'junk'
             }
         });
 
@@ -1854,6 +1886,42 @@ export class OrganisationService {
             distinct: ['status']
         });
 
+        const zohoStatusesResult = await this.prisma.lead.findMany({
+            where: {
+                organisations: {
+                    some: {
+                        id: orgId
+                    }
+                },
+                is_deleted: 0,
+                zoho_lead: {
+                    status: {
+                        not: null
+                    }
+                }
+            },
+            select: {
+                zoho_lead: {
+                    select: {
+                        status: true
+                    }
+                }
+            }
+        });
+
+        // Prisma does not support distinct on nested fields like zoho_lead.status;
+        // deduplicate the nested statuses client-side and format as label-value array.
+        const zoho_statuses = Array.from(
+            new Set(
+                zohoStatusesResult
+                    .map(item => item.zoho_lead?.status)
+                    .filter((s): s is string => s !== null && s !== undefined && s !== '')
+            )
+        ).map(status => ({
+            label: status.charAt(0).toUpperCase() + status.slice(1),
+            value: status
+        })).sort((a, b) => a.label.localeCompare(b.label));
+
         const sourcesResult = await this.prisma.lead.findMany({
             where: {
                 organisations: {
@@ -1889,6 +1957,29 @@ export class OrganisationService {
             }))
             .sort((a, b) => a.label.localeCompare(b.label));
 
+        // Get unique zoho lead owners
+        const zohoLeadOwnersResult = await this.prisma.zohoLeadOwner.findMany({
+            where: {
+                zoho_leads: {
+                    some: {
+                        lead: {
+                            organisations: {
+                                some: {
+                                    id: orgId
+                                }
+                            }
+                        }
+                    }
+                },
+                is_deleted: 0
+            },
+        });
+
+        const zoho_lead_owners = zohoLeadOwnersResult.map(owner => ({
+            label: owner.first_name + (owner.last_name ? ` ${owner.last_name}` : ''),
+            value: owner.id
+        }));
+
         return {
             leads: leads.map(lead => ({
                 id: lead.id,
@@ -1915,9 +2006,9 @@ export class OrganisationService {
             })),
             stats: {
                 total_leads: totalLeads,
-                new_leads: newLeads,
-                qualified_leads: qualifiedLeads,
-                junk_leads: junkLeads
+                new_leads: status && status !== "new" ? 0 : newLeads,
+                qualified_leads: status && status !== "qualified" ? 0 : qualifiedLeads,
+                junk_leads: status && status !== "junk" ? 0 : junkLeads
             },
             pagination: {
                 current_page: page,
@@ -1926,7 +2017,9 @@ export class OrganisationService {
                 total_pages: Math.ceil(total / limit)
             },
             status: statuses,
-            sources
+            sources,
+            zoho_statuses,
+            zoho_lead_owners
         };
     }
 

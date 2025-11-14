@@ -84,6 +84,14 @@ export class LeadsQueryDto {
 
     @IsOptional()
     @IsString()
+    zoho_status?: string;
+
+    @IsOptional()
+    @IsString()
+    zoho_lead_owner?: string;
+
+    @IsOptional()
+    @IsString()
     source?: string;
 
     @IsOptional()

@@ -176,6 +176,8 @@ export class OrganisationController {
                 start_date: leadsQueryDto.start_date,
                 end_date: leadsQueryDto.end_date,
                 status: leadsQueryDto.status,
+                zoho_status: leadsQueryDto.zoho_status,
+                zoho_lead_owner: leadsQueryDto.zoho_lead_owner,
                 source: leadsQueryDto.source,
                 is_indian: leadsQueryDto.is_indian,
                 page: leadsQueryDto.page || 1,
