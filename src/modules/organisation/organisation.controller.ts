@@ -110,6 +110,22 @@ export class OrganisationController {
     }
 
     @UseGuards(HeaderAuthGuard)
+    @Get(':id_or_slug/chats/analysis')
+    async getOrganisationChatsForAnalysis(
+        @Param() paramDto: OrganisationParamDto,
+        @Query('startDate') startDate: string,
+        @Query('endDate') endDate: string
+    ) {
+        return this.organisationService.getOrganisationChatsForAnalysis(
+            paramDto.id_or_slug,
+            {
+                startDate,
+                endDate
+            },
+        );
+    }
+
+    @UseGuards(HeaderAuthGuard)
     @Get(':id_or_slug/chat/:id')
     async getChatDetails(
         @Param('id_or_slug') id_or_slug: string,

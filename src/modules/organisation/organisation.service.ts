@@ -2337,6 +2337,174 @@ export class OrganisationService {
         };
     }
 
+    async getOrganisationChatsForAnalysis(
+        idOrSlug: string,
+        filters: { startDate?: string; endDate?: string }
+    ) {
+        this.logger.log(`Starting getOrganisationChatsForAnalysis for: ${idOrSlug}, filters: ${JSON.stringify(filters)}`);
+
+        try {
+            const id = Number(idOrSlug);
+            const slug = idOrSlug;
+
+            // Find organisation by ID or slug
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    OR: [
+                        { id: isNaN(id) ? undefined : id },
+                        { slug: slug }
+                    ]
+                }
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
+            }
+
+            // Calculate 10 minutes ago from current time
+            const now = new Date();
+            const tenMinutesAgo = new Date(now.getTime() - (10 * 60 * 1000)); // 10 minutes in milliseconds
+
+            this.logger.log(`Looking for chats with messages after: ${tenMinutesAgo.toISOString()}`);
+
+            const orgId = organisation.id;
+
+            // Find chats that have any message in the last 10 minutes
+            const chats = await this.prisma.chat.findMany({
+                where: {
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                    messages: {
+                        some: {
+                            created_at: {
+                                gte: tenMinutesAgo
+                            },
+                            is_deleted: 0
+                        }
+                    }
+                },
+                include: {
+                    lead: {
+                        select: {
+                            id: true,
+                            first_name: true,
+                            last_name: true,
+                            phone_number: true,
+                            email: true,
+                            source: true,
+                            status: true
+                        }
+                    },
+                    agent: {
+                        select: {
+                            id: true,
+                            name: true,
+                            slug: true
+                        }
+                    },
+                    messages: {
+                        where: {
+                            created_at: {
+                                gte: tenMinutesAgo
+                            },
+                            is_deleted: 0
+                        },
+                        select: {
+                            id: true,
+                            role: true,
+                            content: true,
+                            message_type: true,
+                            created_at: true,
+                            prompt_tokens: true,
+                            completion_tokens: true,
+                            total_cost: true,
+                            attachments: {
+                                select: {
+                                    id: true,
+                                    file_url: true,
+                                    file_name: true,
+                                    file_type: true,
+                                    file_size: true,
+                                    created_at: true
+                                }
+                            }
+                        },
+                        orderBy: {
+                            created_at: 'asc'
+                        }
+                    },
+                    _count: {
+                        select: {
+                            messages: {
+                                where: {
+                                    created_at: {
+                                        gte: tenMinutesAgo
+                                    },
+                                    is_deleted: 0
+                                }
+                            }
+                        }
+                    }
+                },
+                orderBy: [
+                    {
+                        updated_at: 'desc'
+                    },
+                    {
+                        created_at: 'desc'
+                    }
+                ]
+            });
+
+            // Transform the chats data
+            const transformedChats = chats.map(chat => ({
+                id: chat.id,
+                status: chat.status,
+                source: chat.source,
+                instagram_id: chat.instagram_id,
+                whatsapp_id: chat.whatsapp_id,
+                name: chat.lead
+                    ? `${chat.lead.first_name || ''} ${chat.lead.last_name || ''}`.trim() || null
+                    : chat.name || null,
+                human_handled: chat.human_handled,
+                unread_messages: chat.unread_messages,
+                prompt_tokens: chat.prompt_tokens,
+                completion_tokens: chat.completion_tokens,
+                total_cost: chat.total_cost,
+                created_at: chat.created_at,
+                updated_at: chat.updated_at,
+                lead: chat.lead,
+                agent: chat.agent,
+                recent_messages: chat.messages,
+                recent_message_count: chat._count.messages,
+                summary: chat.summary,
+                analysis: chat.analysis
+            }));
+
+            const result = {
+                organisation: {
+                    id: organisation.id,
+                    name: organisation.name,
+                    slug: organisation.slug
+                },
+                chats: transformedChats,
+                metadata: {
+                    total_chats: transformedChats.length,
+                    time_window_minutes: 10,
+                    search_time: tenMinutesAgo.toISOString(),
+                    current_time: now.toISOString()
+                }
+            };
+
+            this.logger.log(`Found ${transformedChats.length} chats with recent activity for organisation ${orgId}`);
+            return result;
+
+        } catch (error) {
+            this.logger.error(`Error in getOrganisationChatsForAnalysis for ${idOrSlug}: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
     async updateOrganisation(
         id_or_slug: string,
         updateData: {
