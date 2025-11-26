@@ -30,6 +30,7 @@ export interface LeadsFilterParams {
     zoho_status?: string;
     zoho_lead_owner?: string;
     is_indian?: number;
+    search?: string;
     page: number;
     limit: number;
 }

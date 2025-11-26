@@ -1666,7 +1666,7 @@ export class OrganisationService {
         filters: LeadsFilterParams,
         isSuperAdmin: boolean = false
     ) {
-        const { start_date, end_date, status, source, is_indian, zoho_status, zoho_lead_owner, page = 1, limit = 1000 } = filters;
+        const { start_date, end_date, status, source, is_indian, zoho_status, zoho_lead_owner, search, page = 1, limit = 1000 } = filters;
 
         // Find organisation by id or slug
         const organisation = await this.prisma.organisation.findFirst({
@@ -1754,6 +1754,74 @@ export class OrganisationService {
             whereCondition.is_indian = is_indian;
         }
 
+        // Search filter - optimized for email, phone, and name fields
+        if (search) {
+            const searchTerm = search.trim();
+            
+            whereCondition.OR = [
+                // Search in Lead table fields - Name fields
+                {
+                    first_name: {
+                        contains: searchTerm,
+                        mode: 'insensitive'
+                    }
+                },
+                {
+                    last_name: {
+                        contains: searchTerm,
+                        mode: 'insensitive'
+                    }
+                },
+                // Email field
+                {
+                    email: {
+                        contains: searchTerm,
+                        mode: 'insensitive'
+                    }
+                },
+                // Phone field (always search, not just for numeric terms)
+                {
+                    phone_number: {
+                        contains: searchTerm
+                    }
+                },
+                // Search in ZohoLead table fields - Name fields
+                {
+                    zoho_lead: {
+                        first_name: {
+                            contains: searchTerm,
+                            mode: 'insensitive'
+                        }
+                    }
+                },
+                {
+                    zoho_lead: {
+                        last_name: {
+                            contains: searchTerm,
+                            mode: 'insensitive'
+                        }
+                    }
+                },
+                // Email field in ZohoLead
+                {
+                    zoho_lead: {
+                        email: {
+                            contains: searchTerm,
+                            mode: 'insensitive'
+                        }
+                    }
+                },
+                // Phone field in ZohoLead (always search)
+                {
+                    zoho_lead: {
+                        phone: {
+                            contains: searchTerm
+                        }
+                    }
+                }
+            ];
+        }
+
         // Get total count
         const total = await this.prisma.lead.count({
             where: whereCondition
@@ -1773,6 +1841,72 @@ export class OrganisationService {
         if (is_indian !== undefined) statsBaseFilter.is_indian = is_indian;
         if (zoho_status) statsBaseFilter.zoho_lead = { ...statsBaseFilter.zoho_lead, status: zoho_status };
         if (zoho_lead_owner) statsBaseFilter.zoho_lead = { ...statsBaseFilter.zoho_lead, lead_owner: { id: zoho_lead_owner } };
+        if (search) {
+            const searchTerm = search.trim();
+            
+            statsBaseFilter.OR = [
+                // Search in Lead table fields - Name fields
+                {
+                    first_name: {
+                        contains: searchTerm,
+                        mode: 'insensitive'
+                    }
+                },
+                {
+                    last_name: {
+                        contains: searchTerm,
+                        mode: 'insensitive'
+                    }
+                },
+                // Email field
+                {
+                    email: {
+                        contains: searchTerm,
+                        mode: 'insensitive'
+                    }
+                },
+                // Phone field (always search, not just for numeric terms)
+                {
+                    phone_number: {
+                        contains: searchTerm
+                    }
+                },
+                // Search in ZohoLead table fields - Name fields
+                {
+                    zoho_lead: {
+                        first_name: {
+                            contains: searchTerm,
+                            mode: 'insensitive'
+                        }
+                    }
+                },
+                {
+                    zoho_lead: {
+                        last_name: {
+                            contains: searchTerm,
+                            mode: 'insensitive'
+                        }
+                    }
+                },
+                // Email field in ZohoLead
+                {
+                    zoho_lead: {
+                        email: {
+                            contains: searchTerm,
+                            mode: 'insensitive'
+                        }
+                    }
+                },
+                // Phone field in ZohoLead (always search)
+                {
+                    zoho_lead: {
+                        phone: {
+                            contains: searchTerm
+                        }
+                    }
+                }
+            ];
+        }
 
         // totalLeads: all matching
         const totalLeads = await this.prisma.lead.count({

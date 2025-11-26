@@ -99,6 +99,10 @@ export class LeadsQueryDto {
     is_indian?: number;
 
     @IsOptional()
+    @IsString()
+    search?: string;
+
+    @IsOptional()
     @Transform(({ value }) => parseInt(value, 10))
     page?: number = 1;
 

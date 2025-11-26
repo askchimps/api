@@ -241,6 +241,9 @@ model ZohoLead {
   @@index([requires_human_action])
   @@index([email])
   @@index([phone])
+  @@index([first_name])
+  @@index([last_name])
+  @@index([first_name, last_name])
 }
 
 model Lead {
@@ -274,6 +277,9 @@ model Lead {
   @@index([call_active])
   @@index([email])
   @@index([is_indian])
+  @@index([first_name])
+  @@index([last_name])
+  @@index([first_name, last_name])
 }
 
 model Call {
@@ -385,14 +391,37 @@ model MessageAttachment {
   file_url      String
   file_name     String
   file_size     Int
-  file_type     String // MIME type
-  width         Int? // For images/videos
-  height        Int? // For images/videos
-  duration      Int? // For audio/videos in seconds
-  thumbnail_url String? // For videos
+  file_type     String
+  width         Int?
+  height        Int?
+  duration      Int?
+  thumbnail_url String?
 
   created_at DateTime @default(now())
   message    Message  @relation(fields: [message_id], references: [id], onDelete: Cascade)
 
   @@index([message_id])
+}
+
+model TestChatHistory {
+  id         Int    @id @default(autoincrement())
+  session_id String @db.VarChar(255)
+  message    Json
+}
+
+model InstagramChatHistory {
+  id         Int    @id @default(autoincrement())
+  session_id String @db.VarChar(255)
+  message    Json
+}
+
+model InstagramMessageCache {
+  id     Int     @id @default(autoincrement())
+  msg_id String? @db.VarChar
+}
+
+model WhatsappChatHistory {
+  id         Int    @id @default(autoincrement())
+  session_id String @db.VarChar(255)
+  message    Json
 }

@@ -196,6 +196,7 @@ export class OrganisationController {
                 zoho_lead_owner: leadsQueryDto.zoho_lead_owner,
                 source: leadsQueryDto.source,
                 is_indian: leadsQueryDto.is_indian,
+                search: leadsQueryDto.search,
                 page: leadsQueryDto.page || 1,
                 limit: leadsQueryDto.limit || 1000,
             },
