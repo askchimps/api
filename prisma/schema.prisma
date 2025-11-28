@@ -409,7 +409,7 @@ model TestChatHistory {
   message    Json
 }
 
-model InstagramChatHistory {
+model instagram_chat_history {
   id         Int    @id @default(autoincrement())
   session_id String @db.VarChar(255)
   message    Json
@@ -420,7 +420,7 @@ model InstagramMessageCache {
   msg_id String? @db.VarChar
 }
 
-model WhatsappChatHistory {
+model whatsapp_chat_history {
   id         Int    @id @default(autoincrement())
   session_id String @db.VarChar(255)
   message    Json
