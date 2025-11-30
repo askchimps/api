@@ -87,14 +87,15 @@ model Organisation {
   created_at  DateTime @default(now())
   updated_at  DateTime @default(now()) @updatedAt
 
-  user_organisations UserOrganisation[]
-  agents             Agent[]
-  messages           Message[]
-  leads              Lead[]
-  costs              Cost[]
-  credit_history     CreditHistory[]
-  calls              Call[]
-  chats              Chat[]
+  user_organisations    UserOrganisation[]
+  agents                Agent[]
+  messages              Message[]
+  leads                 Lead[]
+  costs                 Cost[]
+  credit_history        CreditHistory[]
+  calls                 Call[]
+  chats                 Chat[]
+  status_change_history StatusChangeHistory[]
 
   @@index([slug])
   @@index([is_deleted, is_disabled])
@@ -223,6 +224,7 @@ model ZohoLead {
   status                String?
   source                String?
   disposition           String?
+  reason_for_cold       String?
   country               String?
   state                 String?
   city                  String?
@@ -247,29 +249,31 @@ model ZohoLead {
 }
 
 model Lead {
-  id               Int       @id @default(autoincrement())
-  first_name       String?
-  last_name        String?
-  email            String?
-  phone_number     String?   @unique
-  source           String?
-  status           String?
-  is_indian        Int       @default(0)
-  follow_up_count  Int       @default(0)
-  reschedule_count Int       @default(0)
-  last_follow_up   DateTime?
-  next_follow_up   DateTime?
-  call_active      Int       @default(0)
+  id                 Int       @id @default(autoincrement())
+  first_name         String?
+  last_name          String?
+  email              String?
+  phone_number       String?   @unique
+  source             String?
+  status             String?
+  is_indian          Int       @default(0)
+  follow_up_count    Int       @default(0)
+  reschedule_count   Int       @default(0)
+  disconnected_count Int       @default(0)
+  last_follow_up     DateTime?
+  next_follow_up     DateTime?
+  call_active        Int       @default(0)
 
   is_deleted Int      @default(0)
   created_at DateTime @default(now())
   updated_at DateTime @default(now()) @updatedAt
 
-  organisations Organisation[]
-  agents        Agent[]
-  zoho_lead     ZohoLead?
-  calls         Call[]
-  chats         Chat[]
+  organisations         Organisation[]
+  agents                Agent[]
+  zoho_lead             ZohoLead?
+  calls                 Call[]
+  chats                 Chat[]
+  status_change_history StatusChangeHistory[]
 
   @@index([phone_number])
   @@index([next_follow_up])
@@ -305,11 +309,12 @@ model Call {
   created_at DateTime @default(now())
   updated_at DateTime @default(now()) @updatedAt
 
-  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
-  agent        Agent        @relation(fields: [agent_id], references: [id], onDelete: Restrict)
-  lead         Lead         @relation(fields: [lead_id], references: [id], onDelete: Restrict)
-  messages     Message[]
-  costs        Cost[]
+  organisation          Organisation          @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
+  agent                 Agent                 @relation(fields: [agent_id], references: [id], onDelete: Restrict)
+  lead                  Lead                  @relation(fields: [lead_id], references: [id], onDelete: Restrict)
+  messages              Message[]
+  costs                 Cost[]
+  status_change_history StatusChangeHistory[]
 
   @@index([started_at])
   @@index([organisation_id, started_at])
@@ -424,4 +429,28 @@ model whatsapp_chat_history {
   id         Int    @id @default(autoincrement())
   session_id String @db.VarChar(255)
   message    Json
+}
+
+model StatusChangeHistory {
+  id                        Int     @id @default(autoincrement())
+  organisation_id           Int
+  lead_id                   Int
+  call_id                   Int
+  from_lead_status          String?
+  to_lead_status            String?
+  from_zoho_lead_status     String?
+  to_zoho_lead_status       String?
+  from_zoho_disposition     String?
+  to_zoho_disposition       String?
+  from_zoho_reason_for_cold String?
+  to_zoho_reason_for_cold   String?
+  reason                    String?
+
+  is_deleted Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
+  lead         Lead         @relation(fields: [lead_id], references: [id], onDelete: Restrict)
+  call         Call         @relation(fields: [call_id], references: [id], onDelete: Restrict)
 }
