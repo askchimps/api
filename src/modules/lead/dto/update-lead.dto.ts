@@ -62,6 +62,10 @@ export class UpdateZohoLeadDto {
 
     @IsOptional()
     @IsString()
+    reason_for_cold?: string;
+
+    @IsOptional()
+    @IsString()
     country?: string;
 
     @IsOptional()
@@ -130,6 +134,12 @@ export class UpdateLeadDto {
     @Min(0)
     @Type(() => Number)
     reschedule_count?: number;
+
+    @IsOptional()
+    @IsInt()
+    @Min(0)
+    @Type(() => Number)
+    disconnected_count?: number;
 
     @IsOptional()
     @IsDateString()
