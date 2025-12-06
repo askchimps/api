@@ -952,9 +952,9 @@ export class OrganisationService {
                 chats: transformedChats,
                 summary: {
                     totalChats,
-                    openChats,
+                    openChats: filters.status === 'open' ? openChats : 0,
                     handoverChats,
-                    completedChats,
+                    completedChats: filters.status === 'completed' ? completedChats : 0,
                     chatsWithLead,
                     chatsWithoutLead,
                 },
