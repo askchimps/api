@@ -788,6 +788,11 @@ export class OrganisationService {
             const whereCondition: ChatWhereInput = {
                 organisation_id: orgId,
                 is_deleted: 0,
+                messages: {
+                    some: {
+                        role: "assistant"
+                    }
+                }
             };
 
             // Apply date filters
@@ -818,7 +823,7 @@ export class OrganisationService {
 
             // Get chats with first two messages and lead info
             this.logger.log(`Starting parallel database queries`);
-            const [chats, totalChats, openChats, chatsWithLead, chatsWithoutLead] = await Promise.all([
+            const [chats, totalChats, openChats, handoverChats, completedChats, chatsWithLead, chatsWithoutLead] = await Promise.all([
                 this.prisma.chat.findMany({
                     where: whereCondition,
                     include: {
@@ -884,6 +889,20 @@ export class OrganisationService {
                         status: 'open',
                     },
                 }),
+                // Handover chats count
+                this.prisma.chat.count({
+                    where: {
+                        ...whereCondition,
+                        human_handled: 1,
+                    },
+                }),
+                // Completed chats count
+                this.prisma.chat.count({
+                    where: {
+                        ...whereCondition,
+                        status: 'completed',
+                    },
+                }),
                 // Chats with lead count
                 this.prisma.chat.count({
                     where: {
@@ -934,6 +953,8 @@ export class OrganisationService {
                 summary: {
                     totalChats,
                     openChats,
+                    handoverChats,
+                    completedChats,
                     chatsWithLead,
                     chatsWithoutLead,
                 },
@@ -1757,7 +1778,7 @@ export class OrganisationService {
         // Search filter - optimized for email, phone, and name fields
         if (search) {
             const searchTerm = search.trim();
-            
+
             whereCondition.OR = [
                 // Search in Lead table fields - Name fields
                 {
@@ -1843,7 +1864,7 @@ export class OrganisationService {
         if (zoho_lead_owner) statsBaseFilter.zoho_lead = { ...statsBaseFilter.zoho_lead, lead_owner: { id: zoho_lead_owner } };
         if (search) {
             const searchTerm = search.trim();
-            
+
             statsBaseFilter.OR = [
                 // Search in Lead table fields - Name fields
                 {
