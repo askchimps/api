@@ -330,10 +330,10 @@ model Chat {
   agent_id          Int
   lead_id           Int?
   name              String?
-  instagram_id      String?
-  whatsapp_id       String?
+  instagram_id      String?     @unique
+  whatsapp_id       String?     @unique
   source            CHAT_SOURCE
-  status            String
+  status            String      @default("open")
   summary           String?     @db.Text
   analysis          String?     @db.Text
   prompt_tokens     Int         @default(0)
