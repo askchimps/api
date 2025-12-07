@@ -787,12 +787,7 @@ export class OrganisationService {
             // Build where condition for chats
             const whereCondition: ChatWhereInput = {
                 organisation_id: orgId,
-                is_deleted: 0,
-                messages: {
-                    some: {
-                        role: "assistant"
-                    }
-                }
+                is_deleted: 0
             };
 
             // Apply date filters
@@ -952,9 +947,9 @@ export class OrganisationService {
                 chats: transformedChats,
                 summary: {
                     totalChats,
-                    openChats: filters.status === 'open' ? openChats : 0,
+                    openChats: filters.status === 'completed' ? 0 : openChats,
                     handoverChats,
-                    completedChats: filters.status === 'completed' ? completedChats : 0,
+                    completedChats: filters.status === 'open' ? 0 : completedChats,
                     chatsWithLead,
                     chatsWithoutLead,
                 },
@@ -1181,7 +1176,7 @@ export class OrganisationService {
     private async getTotalChats(orgId: number, start?: Date, end?: Date): Promise<number> {
         const whereCondition: ChatWhereInput = {
             organisation_id: orgId,
-            is_deleted: 0,
+            is_deleted: 0
         };
 
         if (start || end) {
