@@ -2511,9 +2511,9 @@ export class OrganisationService {
                 throw new NotFoundException('Organisation not found');
             }
 
-            // Calculate 10 minutes ago from current time
+            // Calculate 5 minutes ago from current time
             const now = new Date();
-            const tenMinutesAgo = new Date(now.getTime() - (10 * 60 * 1000)); // 10 minutes in milliseconds
+            const tenMinutesAgo = new Date(now.getTime() - (5 * 60 * 1000)); // 5 minutes in milliseconds
 
             this.logger.log(`Looking for chats with messages after: ${tenMinutesAgo.toISOString()}`);
 
