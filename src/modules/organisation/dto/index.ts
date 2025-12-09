@@ -3,3 +3,4 @@ export * from './query.dto';
 export * from './service-interfaces';
 export * from './prisma-types';
 export * from './update-organisation.dto';
+export * from './tag-management.dto';

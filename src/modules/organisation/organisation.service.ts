@@ -810,6 +810,17 @@ export class OrganisationService {
                 this.logger.log(`Applied source filter: ${filters.source}`);
             }
 
+            // Apply tag filter
+            if (filters.tag_id) {
+                whereCondition.tags = {
+                    some: {
+                        id: filters.tag_id,
+                        is_deleted: 0,
+                    },
+                };
+                this.logger.log(`Applied tag filter: tag_id=${filters.tag_id}`);
+            }
+
             this.logger.log(`Final whereCondition: ${JSON.stringify(whereCondition)}`);
 
             // Calculate pagination
@@ -860,6 +871,7 @@ export class OrganisationService {
                             },
                             take: 5, // First two messages
                         },
+                        tags: true,
                         agent: {
                             select: {
                                 id: true,
@@ -936,6 +948,7 @@ export class OrganisationService {
                 agent: chat.agent,
                 messages: chat.messages,
                 total_cost: chat.total_cost,
+                tags: chat.tags,
             }));
 
             const result = {
@@ -964,6 +977,7 @@ export class OrganisationService {
                     endDate: end ? end.toISOString().split('T')[0] : null,
                     status: filters.status || null,
                     source: filters.source || null,
+                    tag_id: filters.tag_id || null,
                 },
             };
 
@@ -1099,6 +1113,21 @@ export class OrganisationService {
                         created_at: 'asc',
                     },
                 },
+                // Tags associated with the chat
+                tags: {
+                    where: {
+                        is_deleted: 0,
+                    },
+                    select: {
+                        id: true,
+                        name: true,
+                        created_at: true,
+                        updated_at: true,
+                    },
+                    orderBy: {
+                        name: 'asc',
+                    },
+                },
             },
         });
 
@@ -1158,6 +1187,7 @@ export class OrganisationService {
             agent: chat.agent,
             messages: chat.messages,
             costs: chat.costs,
+            tags: chat.tags,
             statistics: {
                 messageCount,
                 messagesByRole,
@@ -2732,4 +2762,350 @@ export class OrganisationService {
             throw error;
         }
     }
+
+    async addChatTags(
+        idOrSlug: string,
+        chatIdOrExternalId: string,
+        tagIds: number[],
+        isSuperAdmin: boolean = false
+    ) {
+        this.logger.log(`Adding tags to chat ${chatIdOrExternalId} in organisation ${idOrSlug}`);
+
+        try {
+            // Find organisation
+            const id = Number(idOrSlug);
+            const slug = idOrSlug;
+
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    OR: [
+                        { id: isNaN(id) ? undefined : id },
+                        { slug: slug }
+                    ]
+                }
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
+            }
+
+            // Check permissions
+            if (!isSuperAdmin) {
+                if (organisation.is_deleted === 1 || organisation.is_disabled === 1) {
+                    throw new NotFoundException('Organisation not found');
+                }
+            }
+
+            const orgId = organisation.id;
+
+            // Find the chat
+            const chat = await this.prisma.chat.findFirst({
+                where: {
+                    OR: [
+                        { id: chatIdOrExternalId.length > 6 ? undefined : parseInt(chatIdOrExternalId) },
+                        { whatsapp_id: chatIdOrExternalId },
+                        { instagram_id: chatIdOrExternalId },
+                    ],
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                },
+            });
+
+            if (!chat) {
+                throw new NotFoundException('Chat not found');
+            }
+
+            // Validate that all tags exist and belong to the organisation
+            const tags = await this.prisma.tag.findMany({
+                where: {
+                    id: { in: tagIds },
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                },
+            });
+
+            if (tags.length !== tagIds.length) {
+                throw new NotFoundException('One or more tags not found or do not belong to this organisation');
+            }
+
+            // Get existing tag associations
+            const existingTags = await this.prisma.chat.findUnique({
+                where: { id: chat.id },
+                select: {
+                    tags: {
+                        where: { is_deleted: 0 },
+                        select: { id: true },
+                    },
+                },
+            });
+
+            const existingTagIds = existingTags?.tags.map(t => t.id) || [];
+            const newTagIds = tagIds.filter(id => !existingTagIds.includes(id));
+
+            if (newTagIds.length === 0) {
+                this.logger.log(`All tags already associated with chat ${chat.id}`);
+                return {
+                    message: 'All tags are already associated with this chat',
+                    data: {
+                        chat_id: chat.id,
+                        added_tags: [],
+                        existing_tags: existingTagIds,
+                    },
+                };
+            }
+
+            // Add new tags using connect
+            const updatedChat = await this.prisma.chat.update({
+                where: { id: chat.id },
+                data: {
+                    tags: {
+                        connect: newTagIds.map(id => ({ id })),
+                    },
+                    updated_at: new Date(),
+                },
+                include: {
+                    tags: {
+                        where: { is_deleted: 0 },
+                        select: {
+                            id: true,
+                            name: true,
+                            created_at: true,
+                            updated_at: true,
+                        },
+                    },
+                },
+            });
+
+            this.logger.log(`Successfully added ${newTagIds.length} tags to chat ${chat.id}`);
+
+            return {
+                message: 'Tags added successfully',
+                data: {
+                    chat_id: updatedChat.id,
+                    added_tags: newTagIds,
+                    all_tags: updatedChat.tags,
+                },
+            };
+
+        } catch (error) {
+            this.logger.error(`Error adding tags to chat ${chatIdOrExternalId}: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    async removeChatTags(
+        idOrSlug: string,
+        chatIdOrExternalId: string,
+        tagIds: number[],
+        isSuperAdmin: boolean = false
+    ) {
+        this.logger.log(`Removing tags from chat ${chatIdOrExternalId} in organisation ${idOrSlug}`);
+
+        try {
+            // Find organisation
+            const id = Number(idOrSlug);
+            const slug = idOrSlug;
+
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    OR: [
+                        { id: isNaN(id) ? undefined : id },
+                        { slug: slug }
+                    ]
+                }
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
+            }
+
+            // Check permissions
+            if (!isSuperAdmin) {
+                if (organisation.is_deleted === 1 || organisation.is_disabled === 1) {
+                    throw new NotFoundException('Organisation not found');
+                }
+            }
+
+            const orgId = organisation.id;
+
+            // Find the chat
+            const chat = await this.prisma.chat.findFirst({
+                where: {
+                    OR: [
+                        { id: chatIdOrExternalId.length > 6 ? undefined : parseInt(chatIdOrExternalId) },
+                        { whatsapp_id: chatIdOrExternalId },
+                        { instagram_id: chatIdOrExternalId },
+                    ],
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                },
+            });
+
+            if (!chat) {
+                throw new NotFoundException('Chat not found');
+            }
+
+            // Validate that all tags exist and belong to the organisation
+            const tags = await this.prisma.tag.findMany({
+                where: {
+                    id: { in: tagIds },
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                },
+            });
+
+            if (tags.length !== tagIds.length) {
+                throw new NotFoundException('One or more tags not found or do not belong to this organisation');
+            }
+
+            // Get existing tag associations
+            const existingTags = await this.prisma.chat.findUnique({
+                where: { id: chat.id },
+                select: {
+                    tags: {
+                        where: { is_deleted: 0 },
+                        select: { id: true },
+                    },
+                },
+            });
+
+            const existingTagIds = existingTags?.tags.map(t => t.id) || [];
+            const tagsToRemove = tagIds.filter(id => existingTagIds.includes(id));
+
+            if (tagsToRemove.length === 0) {
+                this.logger.log(`None of the specified tags are associated with chat ${chat.id}`);
+                return {
+                    message: 'None of the specified tags are associated with this chat',
+                    data: {
+                        chat_id: chat.id,
+                        removed_tags: [],
+                        remaining_tags: existingTagIds,
+                    },
+                };
+            }
+
+            // Remove tags using disconnect
+            const updatedChat = await this.prisma.chat.update({
+                where: { id: chat.id },
+                data: {
+                    tags: {
+                        disconnect: tagsToRemove.map(id => ({ id })),
+                    },
+                    updated_at: new Date(),
+                },
+                include: {
+                    tags: {
+                        where: { is_deleted: 0 },
+                        select: {
+                            id: true,
+                            name: true,
+                            created_at: true,
+                            updated_at: true,
+                        },
+                    },
+                },
+            });
+
+            this.logger.log(`Successfully removed ${tagsToRemove.length} tags from chat ${chat.id}`);
+
+            return {
+                message: 'Tags removed successfully',
+                data: {
+                    chat_id: updatedChat.id,
+                    removed_tags: tagsToRemove,
+                    remaining_tags: updatedChat.tags,
+                },
+            };
+
+        } catch (error) {
+            this.logger.error(`Error removing tags from chat ${chatIdOrExternalId}: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+
+    async getOrganisationTags(
+        idOrSlug: string,
+        isSuperAdmin: boolean = false
+    ) {
+        this.logger.log(`Getting all tags for organisation ${idOrSlug}`);
+
+        try {
+            // Find organisation
+            const id = Number(idOrSlug);
+            const slug = idOrSlug;
+
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    OR: [
+                        { id: isNaN(id) ? undefined : id },
+                        { slug: slug }
+                    ]
+                }
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
+            }
+
+            // Check permissions
+            if (!isSuperAdmin) {
+                if (organisation.is_deleted === 1 || organisation.is_disabled === 1) {
+                    throw new NotFoundException('Organisation not found');
+                }
+            }
+
+            // Fetch all tags for the organisation
+            const tags = await this.prisma.tag.findMany({
+                where: {
+                    organisation_id: organisation.id,
+                    is_deleted: 0,
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    created_at: true,
+                    updated_at: true,
+                    _count: {
+                        select: {
+                            chats: {
+                                where: {
+                                    is_deleted: 0,
+                                },
+                            },
+                        },
+                    },
+                },
+                orderBy: {
+                    name: 'asc',
+                },
+            });
+
+            this.logger.log(`Found ${tags.length} tags for organisation ${organisation.id}`);
+
+            return {
+                message: 'Tags retrieved successfully',
+                data: {
+                    organisation: {
+                        id: organisation.id,
+                        name: organisation.name,
+                        slug: organisation.slug,
+                    },
+                    tags: tags.map(tag => ({
+                        id: tag.id,
+                        name: tag.name,
+                        chat_count: tag._count.chats,
+                        created_at: tag.created_at,
+                        updated_at: tag.updated_at,
+                    })),
+                    total: tags.length,
+                },
+            };
+
+        } catch (error) {
+            this.logger.error(`Error getting tags for organisation ${idOrSlug}: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
 }

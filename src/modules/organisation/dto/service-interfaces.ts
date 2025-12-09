@@ -8,6 +8,7 @@ export interface ChatsFilterParams {
     endDate?: string;
     status?: string;
     source?: string;
+    tag_id?: number;
     page: number;
     limit: number;
 }

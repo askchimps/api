@@ -1,4 +1,4 @@
-import { Controller, Get, Put, UseGuards, Req, Param, Query, Body } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, UseGuards, Req, Param, Query, Body } from '@nestjs/common';
 import { JwtAuthGuard } from '../../guards/jwt.guard';
 import { OrganisationService } from './organisation.service';
 import type { AuthRequest } from '../../types/auth-request';
@@ -12,7 +12,8 @@ import {
     OrganisationParamDto,
     OrganisationDetailsParamDto,
     OrganisationLeadDetailsParamDto,
-    AgentsPaginationQueryDto
+    AgentsPaginationQueryDto,
+    ManageChatTagsDto
 } from './dto';
 import { HeaderAuthGuard } from '@guards/header-auth.guard';
 import { RoleGuard } from '@guards/role.guard';
@@ -102,6 +103,7 @@ export class OrganisationController {
                 endDate: chatsQueryDto.endDate,
                 status: chatsQueryDto.status,
                 source: chatsQueryDto.source,
+                tag_id: chatsQueryDto.tag_id,
                 page: chatsQueryDto.page || 1,
                 limit: chatsQueryDto.limit || 1000,
             },
@@ -136,6 +138,53 @@ export class OrganisationController {
         return this.organisationService.getChatDetails(
             id_or_slug,
             id,
+            isSuperAdmin
+        );
+    }
+
+    @UseGuards(HeaderAuthGuard)
+    @Get(':id_or_slug/tags')
+    async getOrganisationTags(
+        @Param('id_or_slug') id_or_slug: string,
+        @Req() req: AuthRequest
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.getOrganisationTags(
+            id_or_slug,
+            isSuperAdmin
+        );
+    }
+
+    @UseGuards(HeaderAuthGuard)
+    @Post(':id_or_slug/chat/:id/tags')
+    async addChatTags(
+        @Param('id_or_slug') id_or_slug: string,
+        @Param('id') id: string,
+        @Body() manageChatTagsDto: ManageChatTagsDto,
+        @Req() req: AuthRequest
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.addChatTags(
+            id_or_slug,
+            id,
+            manageChatTagsDto.tag_ids,
+            isSuperAdmin
+        );
+    }
+
+    @UseGuards(HeaderAuthGuard)
+    @Delete(':id_or_slug/chat/:id/tags')
+    async removeChatTags(
+        @Param('id_or_slug') id_or_slug: string,
+        @Param('id') id: string,
+        @Body() manageChatTagsDto: ManageChatTagsDto,
+        @Req() req: AuthRequest
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.removeChatTags(
+            id_or_slug,
+            id,
+            manageChatTagsDto.tag_ids,
             isSuperAdmin
         );
     }

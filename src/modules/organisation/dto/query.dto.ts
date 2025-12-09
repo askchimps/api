@@ -32,6 +32,10 @@ export class ChatsQueryDto extends DateRangeQueryDto {
 
     @IsOptional()
     @Transform(({ value }) => parseInt(value, 10))
+    tag_id?: number;
+
+    @IsOptional()
+    @Transform(({ value }) => parseInt(value, 10))
     page?: number = 1;
 
     @IsOptional()
