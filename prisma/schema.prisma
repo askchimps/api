@@ -347,12 +347,13 @@ model Chat {
   created_at DateTime @default(now())
   updated_at DateTime @default(now()) @updatedAt
 
-  organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
-  agent        Agent        @relation(fields: [agent_id], references: [id], onDelete: Restrict)
-  lead         Lead?        @relation(fields: [lead_id], references: [id], onDelete: Restrict)
-  messages     Message[]
-  costs        Cost[]
-  tags         Tag[]
+  organisation   Organisation  @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
+  agent          Agent         @relation(fields: [agent_id], references: [id], onDelete: Restrict)
+  lead           Lead?         @relation(fields: [lead_id], references: [id], onDelete: Restrict)
+  messages       Message[]
+  costs          Cost[]
+  tags           Tag[]
+  chat_follow_up ChatFollowUp?
 
   @@index([organisation_id, created_at])
   @@index([agent_id, created_at])
@@ -468,4 +469,29 @@ model Tag {
 
   organisation Organisation @relation(fields: [organisation_id], references: [id], onDelete: Restrict)
   chats        Chat[]
+}
+
+model ChatFollowUp {
+  id             Int       @id @default(autoincrement())
+  chat_id        Int       @unique
+  follow_up_at   DateTime?
+  follow_up_note String?
+  follow_up_type String?
+  message_body   Json?
+
+  is_deleted Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  chat Chat @relation(fields: [chat_id], references: [id], onDelete: Restrict)
+
+  @@index([chat_id, follow_up_at])
+}
+
+model ChatFollowUpMessages {
+  id      Int    @id @default(autoincrement())
+  type    String @unique
+  message String
+
+  @@index([type])
 }
