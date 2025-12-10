@@ -3108,4 +3108,98 @@ export class OrganisationService {
         }
     }
 
+
+    async updateChatHandover(
+        idOrSlug: string,
+        chatIdOrExternalId: string,
+        humanHandled: number,
+        isSuperAdmin: boolean = false
+    ) {
+        this.logger.log(`Updating chat handover status for chat ${chatIdOrExternalId} in organisation ${idOrSlug} to ${humanHandled}`);
+
+        try {
+            // Find organisation
+            const id = Number(idOrSlug);
+            const slug = idOrSlug;
+
+            const organisation = await this.prisma.organisation.findFirst({
+                where: {
+                    OR: [
+                        { id: isNaN(id) ? undefined : id },
+                        { slug: slug }
+                    ]
+                }
+            });
+
+            if (!organisation) {
+                throw new NotFoundException('Organisation not found');
+            }
+
+            // Check permissions
+            if (!isSuperAdmin) {
+                if (organisation.is_deleted === 1 || organisation.is_disabled === 1) {
+                    throw new NotFoundException('Organisation not found');
+                }
+            }
+
+            const orgId = organisation.id;
+
+            // Find the chat
+            const chat = await this.prisma.chat.findFirst({
+                where: {
+                    OR: [
+                        { id: chatIdOrExternalId.length > 6 ? undefined : parseInt(chatIdOrExternalId) },
+                        { whatsapp_id: chatIdOrExternalId },
+                        { instagram_id: chatIdOrExternalId },
+                    ],
+                    organisation_id: orgId,
+                    is_deleted: 0,
+                },
+            });
+
+            if (!chat) {
+                throw new NotFoundException('Chat not found');
+            }
+
+            // Validate human_handled value (should be 0 or 1)
+            if (humanHandled !== 0 && humanHandled !== 1) {
+                throw new Error('human_handled must be 0 or 1');
+            }
+
+            // Update the chat
+            const updatedChat = await this.prisma.chat.update({
+                where: { id: chat.id },
+                data: {
+                    human_handled: humanHandled,
+                    updated_at: new Date(),
+                },
+                select: {
+                    id: true,
+                    human_handled: true,
+                    status: true,
+                    source: true,
+                    updated_at: true,
+                },
+            });
+
+            this.logger.log(`Successfully updated chat ${chat.id} handover status to ${humanHandled}`);
+
+            return {
+                success: true,
+                message: `Chat handover status updated successfully`,
+                data: {
+                    id: updatedChat.id,
+                    human_handled: updatedChat.human_handled,
+                    status: updatedChat.status,
+                    source: updatedChat.source,
+                    updated_at: updatedChat.updated_at,
+                },
+            };
+
+        } catch (error) {
+            this.logger.error(`Error updating chat handover status for ${chatIdOrExternalId}: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
 }

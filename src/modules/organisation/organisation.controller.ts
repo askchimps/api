@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Delete, UseGuards, Req, Param, Query, Body } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Patch, UseGuards, Req, Param, Query, Body } from '@nestjs/common';
 import { JwtAuthGuard } from '../../guards/jwt.guard';
 import { OrganisationService } from './organisation.service';
 import type { AuthRequest } from '../../types/auth-request';
@@ -185,6 +185,23 @@ export class OrganisationController {
             id_or_slug,
             id,
             manageChatTagsDto.tag_ids,
+            isSuperAdmin
+        );
+    }
+
+    @UseGuards(HeaderAuthGuard)
+    @Patch(':id_or_slug/chat/:id/handover')
+    async updateChatHandover(
+        @Param('id_or_slug') id_or_slug: string,
+        @Param('id') id: string,
+        @Body('human_handled') human_handled: number,
+        @Req() req: AuthRequest
+    ) {
+        const isSuperAdmin = req.user?.is_super_admin === 1;
+        return this.organisationService.updateChatHandover(
+            id_or_slug,
+            id,
+            human_handled,
             isSuperAdmin
         );
     }
