@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ConfigService } from '@modules/common/config/config.service';
 import { PrismaService } from '@modules/common/prisma/prisma.service';
-import { User, UserOrganisation } from '@prisma/client';
+import { User, UserOrganisation } from '@prisma/public-client';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PinoLoggerService } from '@modules/common/logger/pinoLogger.service';
 

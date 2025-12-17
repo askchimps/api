@@ -1,0 +1,210 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/magpie-client"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("MAGPIE_DATABASE_URL")
+  directUrl = env("MAGPIE_DIRECT_URL")
+}
+
+
+enum Language {
+  EN
+  HI
+}
+
+enum LeadSource {
+  ZOHO
+  INSTAGRAM
+  WHATSAPP
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallSource {
+  AUTOMATION
+  MANUAL
+  WEBSITE
+}
+
+enum CallStatus {
+  ACTIVE
+  COMPLETED
+  FAILED
+  MISSED
+}
+
+enum CallMessageRole {
+  USER
+  AGENT
+  TOOL_CALL
+  TOOL_CALL_RESULT
+}
+
+enum ErrorStatus {
+  PENDING
+  RESOLVED
+  REJECTED
+}
+
+model Organisation {
+  id                              Int     @id @default(autoincrement())
+  name                            String?
+  call_credits                    Float   @default(0)
+  chat_credits                    Float   @default(0)
+  available_indian_channel        Int     @default(0)
+  active_indian_channel           Int     @default(0)
+  available_international_channel Int     @default(0)
+  active_international_channel    Int     @default(0)
+
+  is_deleted Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  leads Lead[]
+  calls Call[]
+}
+
+model Agent {
+  id       Int      @id @default(autoincrement())
+  name     String?
+  vapi_id  String?
+  language Language
+
+  is_deleted Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  calls Call[]
+}
+
+model ZohoOwner {
+  id         String  @id
+  first_name String?
+  last_name  String?
+  email      String?
+  phone      String?
+
+  is_deleted Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  leads Lead[]
+}
+
+model Lead {
+  id               Int        @id @default(autoincrement())
+  zoho_id          String?
+  zoho_owner_id    String?
+  organisation_id  Int?
+  first_name       String?
+  last_name        String?
+  call_active      Boolean    @default(false)
+  email            String?
+  phone            String?    @unique
+  source           LeadSource
+  zoho_source      String?
+  status           String?
+  disposition      String?
+  country          String?    @default("india")
+  state            String?
+  city             String?
+  reason_for_cold  String?
+  next_follow_up   DateTime?
+  follow_up_count  Int        @default(0)
+  reschedule_count Int        @default(0)
+  disconnect_count Int        @default(0)
+
+  is_deleted Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  zoho_owner                ZohoOwner?                @relation(fields: [zoho_owner_id], references: [id])
+  organisation              Organisation?             @relation(fields: [organisation_id], references: [id])
+  calls                     Call[]
+  leadStatusChangeHistories LeadStatusChangeHistory[]
+}
+
+model Call {
+  id              Int           @id @default(autoincrement())
+  lead_id         Int
+  agent_id        Int
+  organisation_id Int
+  vapi_call_id    String?
+  execution_id    String?
+  status          CallStatus?
+  direction       CallDirection
+  from            String?
+  to              String?
+  duration        Float?
+  summary         String?
+  analysis        String?
+  vapi_payload    String?
+  recording_url   String?
+  call_end_reason String?
+  cost            Float?
+  source          CallSource    @default(AUTOMATION)
+
+  is_deleted Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  lead                      Lead                      @relation(fields: [lead_id], references: [id])
+  agent                     Agent                     @relation(fields: [agent_id], references: [id])
+  organisation              Organisation              @relation(fields: [organisation_id], references: [id])
+  callMessages              CallMessage[]
+  leadStatusChangeHistories LeadStatusChangeHistory[]
+}
+
+model CallMessage {
+  id      Int     @id @default(autoincrement())
+  call_id Int
+  role    String? @default("user")
+  content String?
+
+  is_deleted Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  call Call @relation(fields: [call_id], references: [id])
+}
+
+model LeadStatusChangeHistory {
+  id      Int @id @default(autoincrement())
+  lead_id Int
+  call_id Int
+
+  old_status String?
+  new_status String?
+
+  old_dispostion  String?
+  new_disposition String?
+
+  old_reason_for_cold String?
+  new_reason_for_cold String?
+
+  is_deleted Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  lead Lead @relation(fields: [lead_id], references: [id])
+  call Call @relation(fields: [call_id], references: [id])
+}
+
+model ErrorLog {
+  id              Int         @id @default(autoincrement())
+  execution_id    String?
+  system_affected String?
+  error           String?
+  status          ErrorStatus @default(PENDING)
+
+  is_deleted Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+}
+

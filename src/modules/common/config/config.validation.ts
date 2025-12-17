@@ -7,8 +7,20 @@ export const validationSchema = Joi.object({
     .valid('local', 'development', 'production', 'test')
     .default('development'),
 
-  // Database
-  DATABASE_URL: Joi.string().required(),
+  // Database - Public Schema
+  PUBLIC_DATABASE_URL: Joi.string().required(),
+  PUBLIC_DIRECT_URL: Joi.string().optional(),
+
+  // Database - Magpie Schema
+  MAGPIE_DATABASE_URL: Joi.string().required(),
+  MAGPIE_DIRECT_URL: Joi.string().optional(),
+
+  // Database - Sunroof Schema
+  SUNROOF_DATABASE_URL: Joi.string().required(),
+  SUNROOF_DIRECT_URL: Joi.string().optional(),
+
+  // Legacy support
+  DATABASE_URL: Joi.string().optional(),
 
   // Jwt
   JWT_SECRET: Joi.string().required(),

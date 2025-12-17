@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Delete, UseGuards, Param, Query, Body } from '@nestjs/common';
 import { HeaderAuthGuard } from '../../guards/header-auth.guard';
 import { CallService } from './call.service';
-import { CALL_SOURCE } from '@prisma/client';
+import { CALL_SOURCE } from '@prisma/public-client';
 import { 
     CreateCallDto, 
     UpdateCallDto, 

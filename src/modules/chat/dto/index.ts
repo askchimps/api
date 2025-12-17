@@ -1,6 +1,6 @@
 import { IsNotEmpty, IsString, IsOptional, IsNumber, IsIn, IsEnum, IsArray, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { MESSAGE_TYPE, CHAT_SOURCE } from '@prisma/client';
+import { MESSAGE_TYPE, CHAT_SOURCE } from '@prisma/public-client';
 
 export class CreateAttachmentDto {
   @IsNotEmpty()

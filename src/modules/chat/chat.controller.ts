@@ -3,7 +3,7 @@ import { HeaderAuthGuard } from '../../guards/header-auth.guard';
 import { ChatService, CreateMessageDto as ServiceCreateMessageDto, CreateChatDto as ServiceCreateChatDto } from './chat.service';
 import { CreateMessageDto, CreateMediaMessageDto, CreateChatDto, UpdateChatDto, ChatParamDto } from './dto';
 import { UploadService, MultipartFile } from '../upload/upload.service';
-import { MESSAGE_TYPE } from '@prisma/client';
+import { MESSAGE_TYPE } from '@prisma/public-client';
 
 @Controller({
   path: 'chat',

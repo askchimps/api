@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/public-client';
 import { CreditHistoryFilterParams, CreditHistoryEntry } from './types/service-interfaces';
 
 @Injectable()
