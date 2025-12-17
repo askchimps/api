@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { Prisma, CALL_SOURCE, COST_TYPE } from '@prisma/public-client';
+import { Prisma, CALL_SOURCE, COST_TYPE } from '@prisma/client';
 import { CallFilterParams, CreateMessageData, CreateCostData, UpdateMessageData, UpdateCostData } from './types/service-interfaces';
 
 @Injectable()

@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/public-client';
+import { Prisma } from '@prisma/client';
 
 export type ChatWhereInput = Prisma.ChatWhereInput;
 export type CallWhereInput = Prisma.CallWhereInput;  

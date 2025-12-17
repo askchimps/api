@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ROLE, UserOrganisation } from '@prisma/public-client';
+import { ROLE, UserOrganisation } from '@prisma/client';
 import { AuthRequest } from 'types/auth-request';
 
 @Injectable()

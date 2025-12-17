@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsInt, IsNumber, IsDateString, IsIn, Min, Max, IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { CALL_SOURCE, COST_TYPE } from '@prisma/public-client';
+import { CALL_SOURCE, COST_TYPE } from '@prisma/client';
 
 export class UpdateMessageDto {
     @IsOptional()

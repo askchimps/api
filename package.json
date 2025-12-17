@@ -18,17 +18,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "db:seed": "ts-node prisma/seed.ts",
-    "prisma:generate": "npm run prisma:generate:public && npm run prisma:generate:magpie && npm run prisma:generate:sunroof",
-    "prisma:generate:public": "npx prisma generate --schema=./prisma/public.prisma",
-    "prisma:generate:magpie": "npx prisma generate --schema=./prisma/magpie.prisma",
-    "prisma:generate:sunroof": "npx prisma generate --schema=./prisma/sunroof.prisma",
-    "prisma:migrate:public": "npx prisma migrate dev --schema=./prisma/public.prisma",
-    "prisma:migrate:magpie": "npx prisma migrate dev --schema=./prisma/magpie.prisma",
-    "prisma:migrate:sunroof": "npx prisma migrate dev --schema=./prisma/sunroof.prisma",
-    "prisma:studio:public": "npx prisma studio --schema=./prisma/public.prisma",
-    "prisma:studio:magpie": "npx prisma studio --schema=./prisma/magpie.prisma",
-    "prisma:studio:sunroof": "npx prisma studio --schema=./prisma/sunroof.prisma"
+    "db:seed": "ts-node prisma/seed.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

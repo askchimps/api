@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsInt, IsDateString, IsIn, Min } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { CALL_SOURCE } from '@prisma/public-client';
+import { CALL_SOURCE } from '@prisma/client';
 
 export class GetCallsQueryDto {
     @IsOptional()

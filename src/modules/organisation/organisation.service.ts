@@ -1,8 +1,6 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { MagpiePrismaService } from '../common/prisma/magpie-prisma.service';
-import { SunroofPrismaService } from '../common/prisma/sunroof-prisma.service';
-import { Prisma } from '@prisma/public-client';
+import { Prisma } from '@prisma/client';
 import {
     PaginationParams,
     ChatsFilterParams,
@@ -15,11 +13,7 @@ import { ChatWhereInput, CallWhereInput, LeadWhereInput } from './dto/prisma-typ
 export class OrganisationService {
     private readonly logger = new Logger(OrganisationService.name);
 
-    constructor(
-        private readonly prisma: PrismaService,
-        private readonly magpiePrisma: MagpiePrismaService,
-        private readonly sunroofPrisma: SunroofPrismaService,
-    ) { }
+    constructor(private readonly prisma: PrismaService) { }
 
     async getAllOrganisations(isSuperAdmin: boolean = false, userId?: string) {
         this.logger.log(`Getting all organisations - isSuperAdmin: ${isSuperAdmin}, userId: ${userId}`);
@@ -70,118 +64,6 @@ export class OrganisationService {
 
         } catch (error) {
             this.logger.error(`Error in getAllOrganisations: ${error.message}`, error.stack);
-            throw error;
-        }
-    }
-
-    async getAllOrganisationsFromAllSchemas() {
-        this.logger.log('Getting all organisations from all schemas (Public, Magpie, Sunroof)');
-
-        try {
-            // Fetch organisations from all three databases in parallel
-            const [publicOrgs, magpieOrgs, sunroofOrgs] = await Promise.all([
-                // Public (AskChimps) organisations
-                this.prisma.organisation.findMany({
-                    where: {
-                        is_deleted: 0,
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        slug: true,
-                        chat_credits: true,
-                        call_credits: true,
-                        active_indian_calls: true,
-                        active_international_calls: true,
-                        available_indian_channels: true,
-                        available_international_channels: true,
-                        expenses: true,
-                        is_disabled: true,
-                        is_deleted: true,
-                        created_at: true,
-                        updated_at: true,
-                    },
-                    orderBy: {
-                        created_at: 'desc',
-                    },
-                }),
-
-                // Magpie organisations
-                this.magpiePrisma.organisation.findMany({
-                    where: {
-                        is_deleted: 0,
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        call_credits: true,
-                        chat_credits: true,
-                        available_indian_channel: true,
-                        active_indian_channel: true,
-                        available_international_channel: true,
-                        active_international_channel: true,
-                        is_deleted: true,
-                        createdAt: true,
-                        updatedAt: true,
-                    },
-                    orderBy: {
-                        createdAt: 'desc',
-                    },
-                }),
-
-                // Sunroof organisations
-                this.sunroofPrisma.organisation.findMany({
-                    where: {
-                        is_deleted: 0,
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        call_credits: true,
-                        chat_credits: true,
-                        available_indian_channel: true,
-                        active_indian_channel: true,
-                        available_international_channel: true,
-                        active_international_channel: true,
-                        is_deleted: true,
-                        createdAt: true,
-                        updatedAt: true,
-                    },
-                    orderBy: {
-                        createdAt: 'desc',
-                    },
-                }),
-            ]);
-
-            const result = {
-                public: {
-                    schema: 'AskChimps',
-                    count: publicOrgs.length,
-                    organisations: publicOrgs,
-                },
-                magpie: {
-                    schema: 'Magpie',
-                    count: magpieOrgs.length,
-                    organisations: magpieOrgs,
-                },
-                sunroof: {
-                    schema: 'Sunroof',
-                    count: sunroofOrgs.length,
-                    organisations: sunroofOrgs,
-                },
-                summary: {
-                    total_count: publicOrgs.length + magpieOrgs.length + sunroofOrgs.length,
-                    public_count: publicOrgs.length,
-                    magpie_count: magpieOrgs.length,
-                    sunroof_count: sunroofOrgs.length,
-                },
-            };
-
-            this.logger.log(`Successfully retrieved organisations from all schemas - Total: ${result.summary.total_count}`);
-            return result;
-
-        } catch (error) {
-            this.logger.error(`Error in getAllOrganisationsFromAllSchemas: ${error.message}`, error.stack);
             throw error;
         }
     }

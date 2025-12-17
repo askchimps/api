@@ -6,14 +6,7 @@ export const app = registerAs('APP', () => ({
 }));
 
 export const database = registerAs('DATABASE', () => ({
-  PUBLIC_DATABASE_URL: process.env['PUBLIC_DATABASE_URL'],
-  PUBLIC_DIRECT_URL: process.env['PUBLIC_DIRECT_URL'],
-  MAGPIE_DATABASE_URL: process.env['MAGPIE_DATABASE_URL'],
-  MAGPIE_DIRECT_URL: process.env['MAGPIE_DIRECT_URL'],
-  SUNROOF_DATABASE_URL: process.env['SUNROOF_DATABASE_URL'],
-  SUNROOF_DIRECT_URL: process.env['SUNROOF_DIRECT_URL'],
-  // Legacy support
-  DATABASE_URL: process.env['DATABASE_URL'] || process.env['PUBLIC_DATABASE_URL'],
+  DATABASE_URL: process.env['DATABASE_URL'],
 }));
 
 export const jwt = registerAs('JWT', () => ({

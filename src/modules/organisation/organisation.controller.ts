@@ -33,11 +33,6 @@ export class OrganisationController {
         return this.organisationService.getAllOrganisations(isSuperAdmin, userId);
     }
 
-    @Get('all-schemas/list')
-    async getAllOrganisationsFromAllSchemas() {
-        return this.organisationService.getAllOrganisationsFromAllSchemas();
-    }
-
     @UseGuards(HeaderAuthGuard)
     @Get(':id_or_slug')
     async getOrganisationDetails(
