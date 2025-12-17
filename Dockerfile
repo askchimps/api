@@ -13,7 +13,7 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Generate Prisma Clients for all schemas
+# Generate Prisma Clients for all schemas BEFORE building
 RUN npx prisma generate --schema=./prisma/public.prisma
 RUN npx prisma generate --schema=./prisma/magpie.prisma
 RUN npx prisma generate --schema=./prisma/sunroof.prisma
@@ -21,8 +21,13 @@ RUN npx prisma generate --schema=./prisma/sunroof.prisma
 # Build the application
 RUN npm run build
 
-# Remove dev dependencies after build to reduce size
+# Remove dev dependencies after build to reduce size (but keep prisma)
 RUN npm prune --production
+
+# Re-generate Prisma Clients after pruning (since prune removes them)
+RUN npx prisma generate --schema=./prisma/public.prisma
+RUN npx prisma generate --schema=./prisma/magpie.prisma
+RUN npx prisma generate --schema=./prisma/sunroof.prisma
 
 # Create logs directory
 RUN mkdir -p logs
